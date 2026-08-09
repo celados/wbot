@@ -38,7 +38,7 @@ Given 外部用户安装面向 Agent 的工具
 When 用户或 Agent 查看 package、命令、MCP server 与 Plugin 名称
 Then 外部名称统一为 `wbot`
 And CLI 命令为 `wbot`
-And MCP runtime 为 `wbot-mcp`
+And MCP runtime 通过 `wbot mcp` 启动
 And 外部帮助与 schema 不要求用户理解内部 Switchboard 名称
 
 **场景 1.2：CLI schema 只列出三个只读命令**
@@ -241,13 +241,14 @@ Then Plugin 指引回顾上下文时使用历史读取
 And Plugin 指引连续处理时保存并带回更新游标
 And Plugin 不声称自己会在 Platform 保存消费进度
 
-## 功能 7：独立 CLI 与两个 Plugin 共享一个发布契约
+## 功能 7：单一命令与两个 Plugin 共享一个发布契约
 
-**场景 7.1：公共 package 同时提供 CLI 与 MCP runtime**
+**场景 7.1：公共 package 通过单一命令提供 CLI 与 MCP runtime**
 Given 外部用户不使用 Codex 或 Claude Code Plugin
 When 用户安装公开的 `@celados/wbot` package
 Then 用户可以直接调用 `wbot` CLI
-And 用户可以直接启动 `wbot-mcp`
+And 用户可以通过 `wbot mcp` 启动 MCP
+And 安装产物不提供平行的环境或 MCP executable
 
 **场景 7.2：不同入口对同一输入返回等价结果**
 Given CLI、Codex Plugin 和 Claude Code Plugin 使用同一 Tenant API Key

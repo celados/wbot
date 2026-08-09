@@ -13,10 +13,9 @@
     },
     "packages/wbot": {
       "name": "@celados/wbot",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "bin": {
-        "wbot": "./wbot-cli.ts",
-        "wbot-mcp": "./wbot-mcp-entry.ts",
+        "wbot": "./wbot-cli.ts"
       },
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.30.0",

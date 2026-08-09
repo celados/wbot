@@ -5,8 +5,9 @@
       "args": [
         "--bun",
         "--package",
-        "@celados/wbot@https://github.com/celados/wbot/releases/download/v0.1.0/wbot-0.1.0.tgz",
-        "wbot-mcp"
+        "@celados/wbot@https://github.com/celados/wbot/releases/download/v0.1.2/wbot-0.1.2.tgz",
+        "wbot",
+        "mcp"
       ]
     }
   }

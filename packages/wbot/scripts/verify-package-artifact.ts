@@ -23,10 +23,7 @@ const allowedEntries = new Set([
   "platform-types.ts",
   "wbot-cli.ts",
   "wbot-config.ts",
-  "wbot-mcp-entry.ts",
   "wbot-mcp.ts",
-  "wbot-test-cli.ts",
-  "wbot-test-mcp-entry.ts",
 ]);
 const forbiddenPathPattern =
   /(^|\/)(?:\.env(?:\..*)?|\.npmrc|bunfig\.toml|[^/]*\.test\.[^/]+|__tests__|evals?|scripts?|sources?|policy)(?:\/|$)/i;
@@ -86,25 +83,13 @@ try {
   }
 
   const wbot = join(globalBinDirectory, "wbot");
-  const wbotTest = join(globalBinDirectory, "wbot-test");
   const schema = await runCommand([wbot, "@schema"], consumerDirectory);
-  const testSchema = await runCommand([wbotTest, "@schema"], consumerDirectory);
-  for (const command of ["list(input:", "history(input:", "updates(input:"]) {
+  for (const command of ["list(input:", "history(input:", "updates(input:", "mcp()"]) {
     if (!schema.stdout.includes(command)) {
       throw new Error(`The installed wbot artifact is missing ${command}`);
     }
   }
-  if (testSchema.stdout !== schema.stdout) {
-    throw new Error("The installed wbot-test CLI schema differs from wbot.");
-  }
-  for (const binary of [
-    wbot,
-    join(globalBinDirectory, "wbot-mcp"),
-    wbotTest,
-    join(globalBinDirectory, "wbot-test-mcp"),
-  ]) {
-    await runCommand(["test", "-x", binary], consumerDirectory);
-  }
+  await runCommand(["test", "-x", wbot], consumerDirectory);
 
   if (outputDirectory) {
     await writeReleaseAssets(tarballPath, packageJson.version, outputDirectory);
@@ -123,13 +108,7 @@ function parseOutputDirectory(arguments_: readonly string[]): string | undefined
 }
 
 async function verifyPackageContents(paths: readonly string[]): Promise<void> {
-  for (const required of [
-    "wbot-cli.ts",
-    "wbot-mcp-entry.ts",
-    "wbot-test-cli.ts",
-    "wbot-test-mcp-entry.ts",
-    "package.json",
-  ]) {
+  for (const required of ["wbot-cli.ts", "wbot-mcp.ts", "package.json"]) {
     if (!paths.includes(required)) {
       throw new Error(`The package is missing required entry: ${required}`);
     }

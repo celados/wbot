@@ -215,17 +215,12 @@ describe("功能 3 至 5：CLI 与 MCP 保持显式分页语义", () => {
 });
 
 describe("功能 6 与 7：公共 package 和两个 Plugin 共享 runtime", () => {
-  test("场景 7.1：@celados/wbot 发布正式与 dogfood CLI/MCP bins", async () => {
+  test("场景 7.1：@celados/wbot 只发布一个公共 executable", async () => {
     const packageJson = await readJson(new URL("./package.json", import.meta.url).pathname);
 
     expect(packageJson.name).toBe("@celados/wbot");
     expect(packageJson.private).toBe(true);
-    expect(packageJson.bin).toEqual({
-      wbot: "./wbot-cli.ts",
-      "wbot-mcp": "./wbot-mcp-entry.ts",
-      "wbot-test": "./wbot-test-cli.ts",
-      "wbot-test-mcp": "./wbot-test-mcp-entry.ts",
-    });
+    expect(packageJson.bin).toEqual({ wbot: "./wbot-cli.ts" });
   });
 
   test("场景 6.1 至 6.3：Codex 与 Claude Plugin 启动相同 MCP 且不携带凭据", async () => {
@@ -252,7 +247,7 @@ describe("功能 6 与 7：公共 package 和两个 Plugin 共享 runtime", () =
       expect.objectContaining({ name: "wbot", source: "./wbot" }),
     ]);
     expect(codexMcp).toEqual(claudeMcp);
-    expect(JSON.stringify({ codexMcp, claudeMcp })).toContain("wbot-mcp");
+    expect(codexMcp.mcpServers.wbot.args.slice(-2)).toEqual(["wbot", "mcp"]);
     expect(JSON.stringify({ codexMcp, claudeMcp })).not.toMatch(/api[_-]?key|secret|token/i);
   });
 

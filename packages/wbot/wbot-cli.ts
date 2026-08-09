@@ -7,11 +7,8 @@ import * as v from "valibot";
 import type { PlatformClient } from "./platform-client";
 
 import packageJson from "./package.json" with { type: "json" };
-import {
-  DEFAULT_WBOT_PLATFORM_URL,
-  createWbotPlatformClientFromEnvironment,
-  storeWbotApiKey,
-} from "./wbot-config";
+import { createWbotPlatformClientFromEnvironment, storeWbotApiKey } from "./wbot-config";
+import { runWbotMcpServer } from "./wbot-mcp";
 
 const schema = toStandardJsonSchema;
 const nonEmptyString = v.pipe(v.string(), v.minLength(1));
@@ -57,6 +54,9 @@ const commands = {
         .input(schema(messagePageInput)),
     },
   ),
+  mcp: c.meta({
+    description: "Start the read-only wbot MCP server over stdio",
+  }),
 };
 
 const app = cli(commands, {
@@ -65,9 +65,9 @@ const app = cli(commands, {
   description: "Read WeChat conversations through wbot",
 });
 
-export const runWbotCli = async (defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL) => {
+export const runWbotCli = async () => {
   const callPlatform = async <Result>(operation: (client: PlatformClient) => Promise<Result>) =>
-    operation(await createWbotPlatformClientFromEnvironment(process.env, defaultPlatformUrl));
+    operation(await createWbotPlatformClientFromEnvironment(process.env));
 
   await app.run({
     handlers: {
@@ -88,6 +88,7 @@ export const runWbotCli = async (defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL)
         updates: async (args) =>
           JSON.stringify(await callPlatform((client) => client.queryMessages(args.input))),
       },
+      mcp: runWbotMcpServer,
     },
   });
 };

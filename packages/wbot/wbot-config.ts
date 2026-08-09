@@ -8,7 +8,6 @@ import type { PlatformClient } from "./platform-client";
 import { createPlatformClient } from "./platform-client";
 
 export const DEFAULT_WBOT_PLATFORM_URL = "https://wbot-api-prod.celados.com";
-export const DEFAULT_WBOT_TEST_PLATFORM_URL = "https://wbot-api-test.celados.com";
 
 type WbotEnvironment = Record<string, string | undefined>;
 
@@ -26,17 +25,14 @@ export const wbotCredentialsPath = (environment: WbotEnvironment) => {
   return join(configRoot, "wbot", "credentials.json");
 };
 
-export const resolveWbotConfig = async (
-  environment: WbotEnvironment,
-  defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL,
-): Promise<WbotConfig> => {
+export const resolveWbotConfig = async (environment: WbotEnvironment): Promise<WbotConfig> => {
   const apiKey =
     environment.WBOT_API_KEY === undefined || environment.WBOT_API_KEY.length === 0
       ? await readStoredApiKey(environment)
       : environment.WBOT_API_KEY;
   return {
     apiKey,
-    baseUrl: environment.WBOT_PLATFORM_URL ?? defaultPlatformUrl,
+    baseUrl: environment.WBOT_PLATFORM_URL ?? DEFAULT_WBOT_PLATFORM_URL,
   };
 };
 
@@ -51,9 +47,8 @@ export const storeWbotApiKey = async (environment: WbotEnvironment, apiKey: stri
 
 export const createWbotPlatformClientFromEnvironment = (
   environment: WbotEnvironment,
-  defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL,
 ): Promise<PlatformClient> =>
-  resolveWbotConfig(environment, defaultPlatformUrl).then((config) =>
+  resolveWbotConfig(environment).then((config) =>
     createPlatformClient({
       baseUrl: config.baseUrl,
       tenantApiKey: config.apiKey,

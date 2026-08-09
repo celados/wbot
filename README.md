@@ -1,6 +1,6 @@
 # wbot
 
-wbot is an Agent-first, read-only interface to authorized WeChat conversations. This public repository owns the `wbot` CLI, the `wbot-mcp` runtime, and the Codex and Claude Code plugins. The private Switchboard backend remains outside this repository.
+wbot is an Agent-first, read-only interface to authorized WeChat conversations. This public repository owns the single `wbot` command, its MCP runtime, and the Codex and Claude Code plugins. The private Switchboard backend remains outside this repository.
 
 ## Install
 
@@ -12,11 +12,11 @@ wbot auth set
 wbot @schema
 ```
 
-For the current test deployment, use the aliases from the same package:
+For internal dogfood against the test deployment, explicitly select its HTTP Actions origin:
 
 ```sh
-wbot-test auth set
-wbot-test conversations.list '{ "limit": 50 }'
+WBOT_PLATFORM_URL=https://wbot-api-test.celados.com \
+  wbot conversations.list '{ "limit": 50 }'
 ```
 
 See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics.
@@ -26,9 +26,8 @@ See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and 
 The Agent CLI and MCP use the production HTTP Actions origin
 `https://wbot-api-prod.celados.com`. `https://wbot-cloud-prod.celados.com` is
 the separate Convex API/WebSocket origin for browser clients and is not a CLI
-or MCP base URL. Test uses the matching `wbot-api-test.celados.com` and
-`wbot-cloud-test.celados.com` pair. `wbot-test` and `wbot-test-mcp` select the
-test HTTP Actions origin while reusing the same API key and read-only behavior.
+or MCP base URL. Internal test dogfood explicitly sets `WBOT_PLATFORM_URL` to
+`https://wbot-api-test.celados.com`; no test-specific command is published.
 
 ## Development
 
