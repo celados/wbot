@@ -1,6 +1,6 @@
 {
   "name": "@celados/wbot",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Agent-first, read-only access to wbot conversations",
   "license": "MIT",
@@ -11,7 +11,9 @@
   },
   "bin": {
     "wbot": "./wbot-cli.ts",
-    "wbot-mcp": "./wbot-mcp-entry.ts"
+    "wbot-mcp": "./wbot-mcp-entry.ts",
+    "wbot-test": "./wbot-test-cli.ts",
+    "wbot-test-mcp": "./wbot-test-mcp-entry.ts"
   },
   "files": [
     "LICENSE",
@@ -21,7 +23,9 @@
     "wbot-cli.ts",
     "wbot-config.ts",
     "wbot-mcp-entry.ts",
-    "wbot-mcp.ts"
+    "wbot-mcp.ts",
+    "wbot-test-cli.ts",
+    "wbot-test-mcp-entry.ts"
   ],
   "type": "module",
   "dependencies": {

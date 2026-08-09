@@ -13,7 +13,7 @@
     },
     "packages/wbot": {
       "name": "@celados/wbot",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "wbot": "./wbot-cli.ts",
         "wbot-mcp": "./wbot-mcp-entry.ts",

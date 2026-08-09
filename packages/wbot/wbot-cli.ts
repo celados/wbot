@@ -7,7 +7,11 @@ import * as v from "valibot";
 import type { PlatformClient } from "./platform-client";
 
 import packageJson from "./package.json" with { type: "json" };
-import { createWbotPlatformClientFromEnvironment, storeWbotApiKey } from "./wbot-config";
+import {
+  DEFAULT_WBOT_PLATFORM_URL,
+  createWbotPlatformClientFromEnvironment,
+  storeWbotApiKey,
+} from "./wbot-config";
 
 const schema = toStandardJsonSchema;
 const nonEmptyString = v.pipe(v.string(), v.minLength(1));
@@ -61,30 +65,34 @@ const app = cli(commands, {
   description: "Read WeChat conversations through wbot",
 });
 
-const callPlatform = async <Result>(operation: (client: PlatformClient) => Promise<Result>) =>
-  operation(await createWbotPlatformClientFromEnvironment(process.env));
+export const runWbotCli = async (defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL) => {
+  const callPlatform = async <Result>(operation: (client: PlatformClient) => Promise<Result>) =>
+    operation(await createWbotPlatformClientFromEnvironment(process.env, defaultPlatformUrl));
 
-await app.run({
-  handlers: {
-    auth: {
-      set: async () => {
-        const apiKey = await readHiddenApiKey();
-        const path = await storeWbotApiKey(process.env, apiKey);
-        return JSON.stringify({ configured: true, path });
+  await app.run({
+    handlers: {
+      auth: {
+        set: async () => {
+          const apiKey = await readHiddenApiKey();
+          const path = await storeWbotApiKey(process.env, apiKey);
+          return JSON.stringify({ configured: true, path });
+        },
+      },
+      conversations: {
+        list: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.queryConversations(args.input))),
+      },
+      messages: {
+        history: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.queryMessageHistory(args.input))),
+        updates: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.queryMessages(args.input))),
       },
     },
-    conversations: {
-      list: async (args) =>
-        JSON.stringify(await callPlatform((client) => client.queryConversations(args.input))),
-    },
-    messages: {
-      history: async (args) =>
-        JSON.stringify(await callPlatform((client) => client.queryMessageHistory(args.input))),
-      updates: async (args) =>
-        JSON.stringify(await callPlatform((client) => client.queryMessages(args.input))),
-    },
-  },
-});
+  });
+};
+
+if (import.meta.main) await runWbotCli();
 
 async function readHiddenApiKey() {
   const input = process.stdin;

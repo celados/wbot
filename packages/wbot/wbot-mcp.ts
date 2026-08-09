@@ -4,14 +4,14 @@ import { z } from "zod";
 
 import type { PlatformClient } from "./platform-client";
 
-import { createWbotPlatformClientFromEnvironment } from "./wbot-config";
+import { DEFAULT_WBOT_PLATFORM_URL, createWbotPlatformClientFromEnvironment } from "./wbot-config";
 
 type PlatformClientSource = PlatformClient | (() => PlatformClient | Promise<PlatformClient>);
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 
 export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
-  const server = new McpServer({ name: "wbot", version: "0.1.0" });
+  const server = new McpServer({ name: "wbot", version: "0.1.1" });
 
   server.registerTool(
     "list_conversations",
@@ -62,8 +62,10 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
   return server;
 };
 
-export const runWbotMcpServer = async () => {
-  const server = createWbotMcpServer(() => createWbotPlatformClientFromEnvironment(process.env));
+export const runWbotMcpServer = async (defaultPlatformUrl = DEFAULT_WBOT_PLATFORM_URL) => {
+  const server = createWbotMcpServer(() =>
+    createWbotPlatformClientFromEnvironment(process.env, defaultPlatformUrl),
+  );
   await server.connect(new StdioServerTransport());
 };
 
