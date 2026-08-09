@@ -15,6 +15,14 @@ import type { PlatformClient } from "./platform-client";
 import { DEFAULT_WBOT_PLATFORM_URL, resolveWbotConfig } from "./wbot-config";
 import { createWbotMcpServer } from "./wbot-mcp";
 
+type PluginMcpConfig = {
+  mcpServers: {
+    wbot: {
+      args: Array<string>;
+    };
+  };
+};
+
 const cliEntry = new URL("./wbot-cli.ts", import.meta.url).pathname;
 const temporaryDirectories: Array<string> = [];
 const servers: Array<Server> = [];
@@ -224,10 +232,10 @@ describe("功能 6 与 7：公共 package 和两个 Plugin 共享 runtime", () =
   });
 
   test("场景 6.1 至 6.3：Codex 与 Claude Plugin 启动相同 MCP 且不携带凭据", async () => {
-    const codexMcp = await readJson(
+    const codexMcp = await readJson<PluginMcpConfig>(
       new URL("../../plugins/codex/wbot/.mcp.json", import.meta.url).pathname,
     );
-    const claudeMcp = await readJson(
+    const claudeMcp = await readJson<PluginMcpConfig>(
       new URL("../../plugins/claude/wbot/.mcp.json", import.meta.url).pathname,
     );
     const codexManifest = await readJson(
@@ -371,25 +379,32 @@ const createFakePlatformServer = (body: unknown) =>
 const runInteractiveAuth = async (configRoot: string, secret: string) => {
   const scriptCommand =
     process.platform === "darwin"
-      ? '(sleep 0.2; printf "%s\\n" "$WBOT_TEST_SECRET") | script -q /dev/null bun run "$WBOT_CLI_ENTRY" auth.set'
-      : '(sleep 0.2; printf "%s\\n" "$WBOT_TEST_SECRET") | script -q -c \'bun run "$WBOT_CLI_ENTRY" auth.set\' /dev/null';
+      ? 'cat | script -q /dev/null bun run "$WBOT_CLI_ENTRY" auth.set'
+      : "cat | script -q -c 'bun run \"$WBOT_CLI_ENTRY\" auth.set' /dev/null";
   const child = spawn("/bin/sh", ["-c", scriptCommand], {
     env: {
       PATH: requiredProcessEnv("PATH"),
       XDG_CONFIG_HOME: configRoot,
       WBOT_CLI_ENTRY: cliEntry,
-      WBOT_TEST_SECRET: secret,
     },
   });
   let output = "";
+  let secretSent = false;
+  const promptTimeout = setTimeout(() => child.kill(), 2_000);
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
   const capture = (chunk: string) => {
     output += chunk;
+    if (!secretSent && output.includes("API key: ")) {
+      secretSent = true;
+      child.stdin.end(`${secret}\n`);
+    }
   };
   child.stdout.on("data", capture);
   child.stderr.on("data", capture);
   const [exitCode] = (await once(child, "close")) as [number];
+  clearTimeout(promptTimeout);
+  if (!secretSent) throw new Error(`Interactive auth prompt did not appear: ${output}`);
   return { output, exitCode };
 };
 
@@ -399,5 +414,5 @@ const requiredProcessEnv = (name: string) => {
   return value;
 };
 
-const readJson = async (path: string) =>
-  JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+const readJson = async <Value = Record<string, unknown>>(path: string) =>
+  JSON.parse(await readFile(path, "utf8")) as Value;

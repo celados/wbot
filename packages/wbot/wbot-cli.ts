@@ -102,10 +102,10 @@ async function readHiddenApiKey() {
       "`wbot auth set` requires an interactive terminal. Set WBOT_API_KEY for automation.",
     );
   }
-  process.stderr.write("API key: ");
   input.setEncoding("utf8");
   input.setRawMode(true);
   input.resume();
+  process.stderr.write("API key: ");
   try {
     return await new Promise<string>((resolve, reject) => {
       let secret = "";
