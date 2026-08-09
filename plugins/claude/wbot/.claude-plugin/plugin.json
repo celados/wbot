@@ -1,0 +1,8 @@
+{
+  "name": "wbot",
+  "version": "0.1.0",
+  "description": "Read authorized WeChat conversations through wbot.",
+  "author": {
+    "name": "Celados"
+  }
+}

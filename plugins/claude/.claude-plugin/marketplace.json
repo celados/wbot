@@ -1,0 +1,14 @@
+{
+  "name": "wbot",
+  "owner": {
+    "name": "Celados"
+  },
+  "plugins": [
+    {
+      "name": "wbot",
+      "source": "./wbot",
+      "description": "Read authorized WeChat conversations through wbot.",
+      "version": "0.1.0"
+    }
+  ]
+}

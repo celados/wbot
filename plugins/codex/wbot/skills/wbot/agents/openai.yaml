@@ -1,0 +1,6 @@
+interface:
+  display_name: "wbot"
+  short_description: "Read authorized WeChat conversations"
+  default_prompt: "Use $wbot to inspect my authorized WeChat conversations."
+policy:
+  allow_implicit_invocation: true

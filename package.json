@@ -1,0 +1,20 @@
+{
+  "name": "wbot-workspace",
+  "private": true,
+  "workspaces": [
+    "packages/wbot"
+  ],
+  "type": "module",
+  "scripts": {
+    "check": "vp check",
+    "test": "vitest run packages/wbot",
+    "verify:package": "bun run ./packages/wbot/scripts/verify-package-artifact.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "typescript": "5.9.3",
+    "vite-plus": "0.1.12",
+    "vitest": "4.1.0"
+  },
+  "packageManager": "bun@1.3.13"
+}

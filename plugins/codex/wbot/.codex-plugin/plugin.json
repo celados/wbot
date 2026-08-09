@@ -1,0 +1,19 @@
+{
+  "name": "wbot",
+  "version": "0.1.0",
+  "description": "Read authorized WeChat conversations through wbot.",
+  "author": {
+    "name": "Celados"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Wbot",
+    "shortDescription": "Read authorized WeChat conversations.",
+    "longDescription": "List conversations, read recent history, and continue from caller-owned update cursors through the read-only wbot MCP server.",
+    "developerName": "Celados",
+    "category": "Productivity",
+    "capabilities": ["MCP", "Skills"],
+    "defaultPrompt": "Use wbot to inspect my authorized WeChat conversations."
+  },
+  "mcpServers": "./.mcp.json"
+}
