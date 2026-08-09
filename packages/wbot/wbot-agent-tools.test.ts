@@ -372,21 +372,18 @@ const createFakePlatformServer = (body: unknown) =>
   });
 
 const runInteractiveAuth = async (configRoot: string, secret: string) => {
-  const child = spawn(
-    "/bin/sh",
-    [
-      "-c",
-      '(sleep 0.2; printf "%s\\n" "$WBOT_TEST_SECRET") | script -q /dev/null bun run "$WBOT_CLI_ENTRY" auth.set',
-    ],
-    {
-      env: {
-        PATH: requiredProcessEnv("PATH"),
-        XDG_CONFIG_HOME: configRoot,
-        WBOT_CLI_ENTRY: cliEntry,
-        WBOT_TEST_SECRET: secret,
-      },
+  const scriptCommand =
+    process.platform === "darwin"
+      ? '(sleep 0.2; printf "%s\\n" "$WBOT_TEST_SECRET") | script -q /dev/null bun run "$WBOT_CLI_ENTRY" auth.set'
+      : '(sleep 0.2; printf "%s\\n" "$WBOT_TEST_SECRET") | script -q -c \'bun run "$WBOT_CLI_ENTRY" auth.set\' /dev/null';
+  const child = spawn("/bin/sh", ["-c", scriptCommand], {
+    env: {
+      PATH: requiredProcessEnv("PATH"),
+      XDG_CONFIG_HOME: configRoot,
+      WBOT_CLI_ENTRY: cliEntry,
+      WBOT_TEST_SECRET: secret,
     },
-  );
+  });
   let output = "";
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
