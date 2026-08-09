@@ -215,4 +215,7 @@ jobs:
           grep -q 'list(input:' <<<"$schema"
           grep -q 'history(input:' <<<"$schema"
           grep -q 'updates(input:' <<<"$schema"
-          test -x "$BUN_INSTALL_BIN/wbot-mcp"
+          grep -q 'mcp()' <<<"$schema"
+          test ! -e "$BUN_INSTALL_BIN/wbot-mcp"
+          test ! -e "$BUN_INSTALL_BIN/wbot-test"
+          test ! -e "$BUN_INSTALL_BIN/wbot-test-mcp"
