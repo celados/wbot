@@ -16,7 +16,7 @@ wbot auth set
 
 `wbot auth set` reads the key without echoing it and stores it at `$XDG_CONFIG_HOME/wbot/credentials.json`, or `~/.config/wbot/credentials.json` when `XDG_CONFIG_HOME` is unset. For automation, set `WBOT_API_KEY`; it overrides the stored credential. `WBOT_PLATFORM_URL` is an optional development or self-hosted endpoint override.
 
-The default public API is `https://wbot-api-prod.celados.com`. Dogfood and test environments should explicitly set `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com`.
+The default public API is `https://wbot-api-prod.celados.com`. Dogfood and test environments should explicitly set `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com`. The `wbot-cloud-prod.celados.com` and `wbot-cloud-test.celados.com` origins belong to Convex browser clients; they are not valid `WBOT_PLATFORM_URL` values.
 
 ## Agent CLI
 

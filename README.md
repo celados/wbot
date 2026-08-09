@@ -14,6 +14,14 @@ wbot @schema
 
 See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics.
 
+## Public endpoints
+
+The Agent CLI and MCP use the production HTTP Actions origin
+`https://wbot-api-prod.celados.com`. `https://wbot-cloud-prod.celados.com` is
+the separate Convex API/WebSocket origin for browser clients and is not a CLI
+or MCP base URL. Test uses the matching `wbot-api-test.celados.com` and
+`wbot-cloud-test.celados.com` pair.
+
 ## Development
 
 ```sh
