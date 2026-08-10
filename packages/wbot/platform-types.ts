@@ -34,12 +34,21 @@ export type ConversationsQueryInput = {
   limit?: number;
 };
 
+export type ConversationCapability = "read" | "send";
+
+export type CaptureFreshness = {
+  status: "unknown" | "current" | "delayed" | "unavailable";
+  asOfMs: string | null;
+};
+
 export type ConversationResult = {
   id: string;
   channel: string;
   channelConversationId: string;
   kind: "direct" | "room";
   title: string | null;
+  capabilities: Array<ConversationCapability>;
+  captureFreshness: CaptureFreshness;
   latestMessage: {
     id: string;
     direction: "in" | "out";
@@ -96,6 +105,10 @@ export type MessageResult = {
         height: number;
         sizeBytes: number;
       };
+};
+
+export type MessagesQueryResult = Page<MessageResult> & {
+  captureFreshness: CaptureFreshness;
 };
 
 export type MessageSendInput = {

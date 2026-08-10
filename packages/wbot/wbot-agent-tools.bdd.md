@@ -20,6 +20,7 @@ status: accepted # draft | accepted | superseded
 - `wbot` Agent-first CLI 与稳定 JSON 结果
 - Codex Plugin 与 Claude Code Plugin
 - 列出获授权会话、向过去读取历史、从显式游标读取新增消息
+- 会话能力与面向 Tenant 的采集新鲜度
 - 一次性本地凭据配置、环境变量覆盖与敏感信息保护
 - Caller-owned cursor 与无状态恢复
 
@@ -141,6 +142,8 @@ Given Tenant 拥有多个群聊或 DM 的有效读取授权
 When Agent 执行 `wbot conversations list`
 Then Agent 得到不超过请求上限的会话
 And 每个会话包含稳定标识、类型、可用标题与最近消息摘要
+And 每个会话明确返回当前 Tenant 的 read 与可选 send 能力
+And 每个会话返回 unknown、current、delayed 或 unavailable 的采集新鲜度
 And 结果包含下一游标与是否仍有更多会话
 
 **场景 3.4：Agent 显式带回会话游标读取下一页**
@@ -178,6 +181,7 @@ Given Tenant 拥有目标会话的有效读取授权
 When Agent 不带更新游标读取该会话
 Then Agent 得到一个有界的当前消息页
 And 结果包含后续读取新增消息所需的更新游标
+And 结果即使没有消息也包含采集新鲜度
 
 **场景 5.2：带回更新游标后只返回后续入库消息**
 Given Agent 持有先前返回的更新游标
@@ -211,6 +215,14 @@ And Operator 已撤销该 Tenant 对会话的读取授权
 When Agent 使用旧游标读取消息
 Then Platform 拒绝请求
 And 不返回任何消息内容
+
+**场景 5.7：空更新页区分安静会话与采集异常**
+Given Agent 使用更新游标读取一个暂时没有新增消息的会话
+When Platform 返回空消息页
+Then 结果仍包含采集状态和可证明时的最近成功检查时间
+And Agent 可以区分 current、delayed、unavailable 与 unknown
+And 结果不根据最后消息时间推断采集健康
+And 结果不暴露设备、checkpoint、watermark 或 Operator 诊断
 
 ## 功能 6：Codex 与 Claude Code Plugin 提供等价能力
 

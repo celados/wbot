@@ -3,6 +3,7 @@ import type {
   ConversationsQueryInput,
   MessageResult,
   MessagesHistoryInput,
+  MessagesQueryResult,
   MessageSendInput,
   MessageSendResult,
   MessagesQueryInput,
@@ -14,7 +15,7 @@ import type {
 
 export type PlatformClient = {
   queryConversations: (input?: ConversationsQueryInput) => Promise<Page<ConversationResult>>;
-  queryMessages: (input: MessagesQueryInput) => Promise<Page<MessageResult>>;
+  queryMessages: (input: MessagesQueryInput) => Promise<MessagesQueryResult>;
   queryMessageHistory: (input: MessagesHistoryInput) => Promise<Page<MessageResult>>;
   sendMessage: (input: MessageSendInput) => Promise<MessageSendResult>;
   getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSendResult>;
@@ -86,7 +87,7 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
   return {
     queryConversations: (input = {}) =>
       request<Page<ConversationResult>>("/platform/v1/conversations/query", input),
-    queryMessages: (input) => request<Page<MessageResult>>("/platform/v1/messages/query", input),
+    queryMessages: (input) => request<MessagesQueryResult>("/platform/v1/messages/query", input),
     queryMessageHistory: (input) =>
       request<Page<MessageResult>>("/platform/v1/messages/history", input),
     sendMessage: (input) => request<MessageSendResult>("/platform/v1/messages/send", input),

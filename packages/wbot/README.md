@@ -41,6 +41,12 @@ For internal test-deployment dogfood, prefix the same commands with `WBOT_PLATFO
 
 History cursors page toward older messages. Updates cursors move forward by Platform ingestion order. Save each updates cursor in the calling Agent and explicitly pass it on the next call; wbot does not store a consumer checkpoint.
 
+Each conversation includes `capabilities` and `captureFreshness`. Capabilities describe the
+Tenant's current `read` and `send` authorization, while wbot itself remains read-only. Every
+`messages.updates` result, including an empty page, includes capture freshness so an Agent can
+distinguish a quiet conversation from delayed, unavailable, or insufficient capture evidence.
+`captureFreshness` is operational recency evidence, not a guarantee of complete message history.
+
 ## MCP
 
 Start the stdio server with:

@@ -21,6 +21,11 @@ WBOT_PLATFORM_URL=https://wbot-api-test.celados.com \
 
 See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics.
 
+Conversation results expose the Tenant's `read` and `send` capabilities. Conversation and message
+update results also expose capture freshness, allowing Agents to distinguish quiet conversations
+from delayed, unavailable, or insufficient capture evidence without accessing private operator
+diagnostics.
+
 ## Public endpoints
 
 The Agent CLI and MCP use the production HTTP Actions origin
