@@ -151,7 +151,18 @@ describe("功能 2：CLI 与 MCP 复用安全的本机凭据", () => {
 describe("功能 3 至 5：CLI 与 MCP 保持显式分页语义", () => {
   test("场景 3.1：CLI 成功结果是 stdout 中唯一的 JSON", async () => {
     const platform = await createFakePlatformServer({
-      items: [],
+      items: [
+        {
+          id: "room-1",
+          channel: "wechat",
+          channelConversationId: "opaque-room-1",
+          kind: "room",
+          title: "Founders Circle",
+          capabilities: ["read", "send"],
+          captureFreshness: { status: "current", asOfMs: "1786000000000" },
+          latestMessage: null,
+        },
+      ],
       nextCursor: "next-conversation",
       hasMore: false,
     });
@@ -164,7 +175,12 @@ describe("功能 3 至 5：CLI 与 MCP 保持显式分页语义", () => {
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.stderr).toBe("");
     expect(JSON.parse(result.stdout)).toEqual({
-      items: [],
+      items: [
+        expect.objectContaining({
+          capabilities: ["read", "send"],
+          captureFreshness: { status: "current", asOfMs: "1786000000000" },
+        }),
+      ],
       nextCursor: "next-conversation",
       hasMore: false,
     });
@@ -180,7 +196,12 @@ describe("功能 3 至 5：CLI 与 MCP 保持显式分页语义", () => {
         },
         queryMessages: async (input) => {
           calls.push({ kind: "updates", input });
-          return { items: [], nextCursor: "updates-next", hasMore: false };
+          return {
+            items: [],
+            nextCursor: "updates-next",
+            hasMore: false,
+            captureFreshness: { status: "delayed", asOfMs: "1785999800000" },
+          };
         },
       }),
     );
@@ -216,7 +237,12 @@ describe("功能 3 至 5：CLI 与 MCP 保持显式分页语义", () => {
       result: { items: [], nextCursor: "history-next", hasMore: true },
     });
     expect(updates.structuredContent).toEqual({
-      result: { items: [], nextCursor: "updates-next", hasMore: false },
+      result: {
+        items: [],
+        nextCursor: "updates-next",
+        hasMore: false,
+        captureFreshness: { status: "delayed", asOfMs: "1785999800000" },
+      },
     });
     await fixture.close();
   });
@@ -319,6 +345,7 @@ const createPlatformClientStub = (overrides: Partial<PlatformClient> = {}): Plat
     items: [],
     nextCursor: "updates-cursor",
     hasMore: false,
+    captureFreshness: { status: "unknown", asOfMs: null },
   }),
   queryMessageHistory: async () => ({
     items: [],

@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { PlatformClient } from "./platform-client";
 
+import packageJson from "./package.json" with { type: "json" };
 import { createWbotPlatformClientFromEnvironment } from "./wbot-config";
 
 type PlatformClientSource = PlatformClient | (() => PlatformClient | Promise<PlatformClient>);
@@ -11,7 +12,7 @@ type PlatformClientSource = PlatformClient | (() => PlatformClient | Promise<Pla
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false } as const;
 
 export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
-  const server = new McpServer({ name: "wbot", version: "0.1.2" });
+  const server = new McpServer({ name: "wbot", version: packageJson.version });
 
   server.registerTool(
     "list_conversations",

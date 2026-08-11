@@ -3,6 +3,7 @@ import type {
   ConversationsQueryInput,
   MessageResult,
   MessagesHistoryInput,
+  MessagesQueryResult,
   MessageSendInput,
   MessageSendResult,
   MessagesQueryInput,
@@ -11,10 +12,21 @@ import type {
   Page,
   PlatformErrorCode,
 } from "./platform-types";
+import type * as v from "valibot";
+
+import { safeParse } from "valibot";
+
+import {
+  conversationsPageSchema,
+  messagesHistoryPageSchema,
+  messagesQueryResultSchema,
+  messageSendResultSchema,
+  outboundSendResultSchema,
+} from "./platform-schemas";
 
 export type PlatformClient = {
   queryConversations: (input?: ConversationsQueryInput) => Promise<Page<ConversationResult>>;
-  queryMessages: (input: MessagesQueryInput) => Promise<Page<MessageResult>>;
+  queryMessages: (input: MessagesQueryInput) => Promise<MessagesQueryResult>;
   queryMessageHistory: (input: MessagesHistoryInput) => Promise<Page<MessageResult>>;
   sendMessage: (input: MessageSendInput) => Promise<MessageSendResult>;
   getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSendResult>;
@@ -23,7 +35,8 @@ export type PlatformClient = {
 type PlatformClientConfig = {
   baseUrl: string;
   tenantApiKey: string;
-  fetch?: typeof fetch;
+  fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+  onDeprecationWarning?: (warning: string) => void;
 };
 
 type PlatformEnvironment = Record<string, string | undefined>;
@@ -37,6 +50,20 @@ export class PlatformRequestError extends Error {
     this.name = "PlatformRequestError";
     this.status = status;
     this.code = code;
+  }
+}
+
+export class PlatformContractError extends Error {
+  readonly code = "invalid_platform_response" as const;
+  readonly endpoint: string;
+  readonly issuePaths: readonly string[];
+
+  constructor(endpoint: string, issuePaths: readonly string[]) {
+    const location = issuePaths.length > 0 ? issuePaths.join(", ") : "<root>";
+    super(`Platform returned an invalid response for ${endpoint} at ${location}.`);
+    this.name = "PlatformContractError";
+    this.endpoint = endpoint;
+    this.issuePaths = issuePaths;
   }
 }
 
@@ -62,7 +89,12 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
     throw new Error("SWITCHBOARD_TENANT_API_KEY must be non-empty");
   }
   const platformFetch = config.fetch ?? fetch;
-  const request = async <Result>(path: string, body: object) => {
+  let reportedDeprecation = false;
+  const request = async <Result>(
+    path: string,
+    body: object,
+    schema?: v.GenericSchema<unknown, Result>,
+  ) => {
     const response = await platformFetch(new URL(path, baseUrl), {
       method: "POST",
       headers: {
@@ -71,7 +103,14 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
       },
       body: JSON.stringify(body),
     });
-    const payload = await readResponseBody(response);
+    if (response.ok && !reportedDeprecation) {
+      const warning = readDeprecationWarning(response.headers);
+      if (warning) {
+        reportedDeprecation = true;
+        config.onDeprecationWarning?.(warning);
+      }
+    }
+    const payload = await readResponseBody(response, path);
     if (!response.ok) {
       const error = readError(payload);
       throw new PlatformRequestError(
@@ -80,19 +119,57 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
         error?.code ?? "internal_error",
       );
     }
-    return payload as Result;
+    if (!schema) return payload as Result;
+    const result = safeParse(schema, payload);
+    if (!result.success) {
+      const issuePaths = result.issues.flatMap((issue) => {
+        const path = issue.path?.map((item) => String(item.key)).join(".");
+        return path ? [path] : [];
+      });
+      throw new PlatformContractError(path, issuePaths);
+    }
+    return result.output;
   };
 
   return {
     queryConversations: (input = {}) =>
-      request<Page<ConversationResult>>("/platform/v1/conversations/query", input),
-    queryMessages: (input) => request<Page<MessageResult>>("/platform/v1/messages/query", input),
+      request<Page<ConversationResult>>(
+        "/platform/v1/conversations/query",
+        input,
+        conversationsPageSchema,
+      ),
+    queryMessages: (input) =>
+      request<MessagesQueryResult>("/platform/v1/messages/query", input, messagesQueryResultSchema),
     queryMessageHistory: (input) =>
-      request<Page<MessageResult>>("/platform/v1/messages/history", input),
-    sendMessage: (input) => request<MessageSendResult>("/platform/v1/messages/send", input),
+      request<Page<MessageResult>>(
+        "/platform/v1/messages/history",
+        input,
+        messagesHistoryPageSchema,
+      ),
+    sendMessage: (input) =>
+      request<MessageSendResult>("/platform/v1/messages/send", input, messageSendResultSchema),
     getOutboundSend: (input) =>
-      request<OutboundSendResult>("/platform/v1/outbound-sends/get", input),
+      request<OutboundSendResult>(
+        "/platform/v1/outbound-sends/get",
+        input,
+        outboundSendResultSchema,
+      ),
   };
+};
+
+const readDeprecationWarning = (headers: Headers): string | null => {
+  const deprecation = headers.get("Deprecation");
+  const sunset = headers.get("Sunset");
+  const link = headers.get("Link");
+  if (!deprecation && !sunset) return null;
+  return [
+    "Platform API deprecation",
+    deprecation ? `deprecated=${deprecation}` : null,
+    sunset ? `sunset=${sunset}` : null,
+    link ? `migration=${link}` : null,
+  ]
+    .filter((part) => part !== null)
+    .join("; ");
 };
 
 const normalizeBaseUrl = (value: string) => {
@@ -106,10 +183,11 @@ const normalizeBaseUrl = (value: string) => {
   return url;
 };
 
-const readResponseBody = async (response: Response): Promise<unknown> => {
+const readResponseBody = async (response: Response, endpoint: string): Promise<unknown> => {
   try {
     return await response.json();
   } catch {
+    if (response.ok) throw new PlatformContractError(endpoint, ["<json>"]);
     throw new PlatformRequestError(
       `Platform returned invalid JSON (${response.status})`,
       response.status,

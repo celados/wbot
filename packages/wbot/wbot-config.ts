@@ -52,6 +52,9 @@ export const createWbotPlatformClientFromEnvironment = (
     createPlatformClient({
       baseUrl: config.baseUrl,
       tenantApiKey: config.apiKey,
+      onDeprecationWarning: (warning) => {
+        process.stderr.write(`${warning}\n`);
+      },
     }),
   );
 

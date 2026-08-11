@@ -16,12 +16,20 @@ type ReleaseDecision = Readonly<{
   tagExists: boolean;
 }>;
 
+type ReleaseVersionSurface = Readonly<{
+  name: string;
+  version: string;
+}>;
+
+type ReleaseImpact = "compatible" | "breaking";
+
 type CommandResult = Readonly<{
   stdout: string;
   stderr: string;
 }>;
 
 const packagePath = "packages/wbot/package.json";
+const changelogPath = "packages/wbot/CHANGELOG.md";
 const semVerPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
@@ -72,6 +80,92 @@ export function isInitialPush(beforeSha: string | undefined): boolean {
   return beforeSha !== undefined && /^0+$/.test(beforeSha);
 }
 
+export function requireMatchingReleaseVersions(
+  expectedVersion: string,
+  surfaces: readonly ReleaseVersionSurface[],
+): void {
+  for (const surface of surfaces) {
+    if (surface.version !== expectedVersion) {
+      throw new Error(`${surface.name} reports ${surface.version}, expected ${expectedVersion}.`);
+    }
+  }
+}
+
+export function requireVersionIncrement(
+  previousVersion: string,
+  nextVersion: string,
+  impact: ReleaseImpact,
+): void {
+  const previous = parseSemVer(previousVersion);
+  const next = parseSemVer(nextVersion);
+  if (impact === "compatible") {
+    const isNextPatch =
+      next.major === previous.major &&
+      next.minor === previous.minor &&
+      next.patch === previous.patch + 1n &&
+      next.prerelease.length === 0;
+    if (!isNextPatch) {
+      throw new Error(
+        `Compatible change must increment patch from ${previous.raw}, received ${next.raw}.`,
+      );
+    }
+    return;
+  }
+  const incrementsReleaseCandidate =
+    previous.prerelease.length === 2 &&
+    previous.prerelease[0] === "rc" &&
+    /^\d+$/.test(previous.prerelease[1] ?? "") &&
+    next.major === previous.major &&
+    next.minor === previous.minor &&
+    next.patch === previous.patch &&
+    next.prerelease.length === 2 &&
+    next.prerelease[0] === "rc" &&
+    /^\d+$/.test(next.prerelease[1] ?? "") &&
+    BigInt(next.prerelease[1] ?? "0") === BigInt(previous.prerelease[1] ?? "0") + 1n;
+  if (incrementsReleaseCandidate) return;
+  const promotesReleaseCandidate =
+    previous.prerelease[0] === "rc" &&
+    next.major === previous.major &&
+    next.minor === previous.minor &&
+    next.patch === previous.patch &&
+    next.prerelease.length === 0;
+  if (promotesReleaseCandidate) return;
+  const startsBreakingMinor =
+    previous.major === 0n &&
+    next.major === 0n &&
+    next.minor === previous.minor + 1n &&
+    next.patch === 0n &&
+    next.prerelease.length === 2 &&
+    next.prerelease[0] === "rc" &&
+    next.prerelease[1] === "1";
+  if (!startsBreakingMinor) {
+    throw new Error(
+      `Breaking pre-1.0 change must increment minor and start with rc.1 from ${previous.raw}, received ${next.raw}.`,
+    );
+  }
+}
+
+export function readReleaseImpact(changelogSection: string): ReleaseImpact {
+  const heading = /^### Breaking Changes\s*$/m.exec(changelogSection);
+  if (!heading) return "compatible";
+  const remainder = changelogSection.slice(heading.index + heading[0].length);
+  const nextHeading = /^### /m.exec(remainder);
+  const content = nextHeading ? remainder.slice(0, nextHeading.index) : remainder;
+  return /^\s*[-*] /m.test(content) ? "breaking" : "compatible";
+}
+
+export function extractChangelogSection(changelog: string, version: string): string {
+  const lines = changelog.split("\n");
+  const prefix = `## ${version} - `;
+  const start = lines.findIndex((line) => line.startsWith(prefix));
+  if (start === -1) throw new Error(`Changelog must contain version ${version}.`);
+  const next = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+  return lines
+    .slice(start, next === -1 ? lines.length : next)
+    .join("\n")
+    .trimEnd();
+}
+
 export function decideRelease(
   versionValue: string,
   tags: readonly string[],
@@ -117,6 +211,11 @@ async function main(): Promise<void> {
   }
   const packageJson = await readPackageJson(resolve(packagePath));
   const version = requireVersion(packageJson);
+  requireMatchingReleaseVersions(version, await readRepositoryReleaseVersions(process.cwd()));
+  const changelogSection = extractChangelogSection(
+    await readFile(resolve(changelogPath), "utf8"),
+    version,
+  );
   if (options.eventName === "push" && options.beforeSha !== undefined) {
     if (isInitialPush(options.beforeSha)) {
       await writeOutputs(options.output, { release: "false" });
@@ -124,10 +223,14 @@ async function main(): Promise<void> {
       return;
     }
     const previousPackageJson = await readPackageJsonAtCommit(options.beforeSha);
-    if (previousPackageJson !== undefined && requireVersion(previousPackageJson) === version) {
-      await writeOutputs(options.output, { release: "false" });
-      process.stdout.write("Package version did not change; release skipped.\n");
-      return;
+    if (previousPackageJson !== undefined) {
+      const previousVersion = requireVersion(previousPackageJson);
+      if (previousVersion === version) {
+        await writeOutputs(options.output, { release: "false" });
+        process.stdout.write("Package version did not change; release skipped.\n");
+        return;
+      }
+      requireVersionIncrement(previousVersion, version, readReleaseImpact(changelogSection));
     }
   }
   const tags = (await runCommand(["git", "tag", "--list"], process.cwd())).stdout
@@ -149,6 +252,80 @@ async function main(): Promise<void> {
     tag_exists: String(decision.tagExists),
   });
   process.stdout.write(`Release preflight passed for ${decision.tag} at ${options.targetSha}.\n`);
+}
+
+async function readRepositoryReleaseVersions(
+  repositoryRoot: string,
+): Promise<readonly ReleaseVersionSurface[]> {
+  const codexManifest = await readJson(
+    resolve(repositoryRoot, "plugins/codex/wbot/.codex-plugin/plugin.json"),
+  );
+  const claudeManifest = await readJson(
+    resolve(repositoryRoot, "plugins/claude/wbot/.claude-plugin/plugin.json"),
+  );
+  const marketplace = await readJson(
+    resolve(repositoryRoot, "plugins/claude/.claude-plugin/marketplace.json"),
+  );
+  const codexMcp = await readJson(resolve(repositoryRoot, "plugins/codex/wbot/.mcp.json"));
+  const claudeMcp = await readJson(resolve(repositoryRoot, "plugins/claude/wbot/.mcp.json"));
+  return [
+    { name: "Codex Plugin", version: requireStringProperty(codexManifest, "version") },
+    { name: "Claude Plugin", version: requireStringProperty(claudeManifest, "version") },
+    { name: "Claude marketplace", version: readMarketplaceVersion(marketplace) },
+    { name: "Codex Plugin runtime", version: readPinnedRuntimeVersion(codexMcp) },
+    { name: "Claude Plugin runtime", version: readPinnedRuntimeVersion(claudeMcp) },
+  ];
+}
+
+async function readJson(path: string): Promise<unknown> {
+  return JSON.parse(await readFile(path, "utf8")) as unknown;
+}
+
+function requireStringProperty(value: unknown, property: string): string {
+  if (!value || typeof value !== "object" || !(property in value)) {
+    throw new Error(`Release metadata must contain ${property}.`);
+  }
+  const result = (value as Record<string, unknown>)[property];
+  if (typeof result !== "string") {
+    throw new Error(`Release metadata ${property} must be a string.`);
+  }
+  return result;
+}
+
+function readMarketplaceVersion(value: unknown): string {
+  if (!value || typeof value !== "object" || !("plugins" in value)) {
+    throw new Error("Claude marketplace must contain plugins.");
+  }
+  const plugins = (value as { plugins?: unknown }).plugins;
+  if (!Array.isArray(plugins)) throw new Error("Claude marketplace plugins must be an array.");
+  const wbot = plugins.find(
+    (plugin) => plugin && typeof plugin === "object" && "name" in plugin && plugin.name === "wbot",
+  );
+  return requireStringProperty(wbot, "version");
+}
+
+function readPinnedRuntimeVersion(value: unknown): string {
+  if (!value || typeof value !== "object" || !("mcpServers" in value)) {
+    throw new Error("Plugin MCP manifest must contain mcpServers.");
+  }
+  const servers = (value as { mcpServers?: unknown }).mcpServers;
+  if (!servers || typeof servers !== "object" || !("wbot" in servers)) {
+    throw new Error("Plugin MCP manifest must contain the wbot server.");
+  }
+  const server = (servers as { wbot?: unknown }).wbot;
+  if (!server || typeof server !== "object" || !("args" in server)) {
+    throw new Error("Plugin wbot server must contain args.");
+  }
+  const arguments_ = (server as { args?: unknown }).args;
+  if (!Array.isArray(arguments_) || !arguments_.every((argument) => typeof argument === "string")) {
+    throw new Error("Plugin wbot server args must be strings.");
+  }
+  const packageArgument = arguments_.find((argument) => argument.startsWith("@celados/wbot@"));
+  const match = packageArgument?.match(/\/download\/v([^/]+)\/wbot-([^/]+)\.tgz$/);
+  if (!match?.[1] || match[1] !== match[2]) {
+    throw new Error("Plugin runtime must pin one versioned wbot artifact.");
+  }
+  return match[1];
 }
 
 function parseOptions(arguments_: readonly string[]): {

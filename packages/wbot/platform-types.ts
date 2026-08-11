@@ -27,11 +27,24 @@ export type MessageContent =
       pagePath: string | null;
       thumbnailUrl: string | null;
     }
+  | { kind: "nudge"; suffix: string | null }
   | { kind: "unknown"; preview: string };
 
 export type ConversationsQueryInput = {
   cursor?: string;
   limit?: number;
+};
+
+export type ConversationAvatar =
+  | { kind: "fallback" }
+  | { kind: "image"; url: string }
+  | { kind: "composite"; urls: Array<string> };
+
+export type ConversationCapability = "read" | "send";
+
+export type CaptureFreshness = {
+  status: "unknown" | "current" | "delayed" | "unavailable";
+  asOfMs: string | null;
 };
 
 export type ConversationResult = {
@@ -40,6 +53,9 @@ export type ConversationResult = {
   channelConversationId: string;
   kind: "direct" | "room";
   title: string | null;
+  capabilities: Array<ConversationCapability>;
+  captureFreshness: CaptureFreshness;
+  avatar?: ConversationAvatar;
   latestMessage: {
     id: string;
     direction: "in" | "out";
@@ -73,12 +89,26 @@ export type MessageIdentity = {
       };
 };
 
+export type MessageAttachment =
+  | { status: "pending" }
+  | {
+      status: "ready";
+      url: string;
+      mimeType: string;
+      sizeBytes: number;
+      descriptor:
+        | { kind: "image"; width: number; height: number }
+        | { kind: "file" }
+        | { kind: "audio"; durationMs: number };
+    };
+
 export type MessageResult = {
   messageId: string;
   conversationId: string;
   direction: "in" | "out";
   content: MessageContent;
   sender: MessageIdentity | null;
+  target?: MessageIdentity | null;
   replyTo: {
     messageId: string | null;
     sender: MessageIdentity | null;
@@ -86,16 +116,11 @@ export type MessageResult = {
     content: MessageContent;
   } | null;
   occurredAtMs: string;
-  media?:
-    | { status: "pending" }
-    | {
-        status: "ready";
-        url: string;
-        mimeType: "image/jpeg";
-        width: number;
-        height: number;
-        sizeBytes: number;
-      };
+  attachment?: MessageAttachment;
+};
+
+export type MessagesQueryResult = Page<MessageResult> & {
+  captureFreshness: CaptureFreshness;
 };
 
 export type MessageSendInput = {

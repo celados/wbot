@@ -4,6 +4,8 @@
 
 - `wbot` — a JSON-only Agent CLI with an `mcp` subcommand for MCP stdio
 
+See the [changelog](CHANGELOG.md) before upgrading across a minor version.
+
 ## Configure
 
 Install [Bun](https://bun.sh), then install the latest verified GitHub Release artifact:
@@ -40,6 +42,12 @@ Successful commands write one JSON value to stdout. Errors go to stderr and exit
 For internal test-deployment dogfood, prefix the same commands with `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com`.
 
 History cursors page toward older messages. Updates cursors move forward by Platform ingestion order. Save each updates cursor in the calling Agent and explicitly pass it on the next call; wbot does not store a consumer checkpoint.
+
+Each conversation includes `capabilities` and `captureFreshness`. Capabilities describe the
+Tenant's current `read` and `send` authorization, while wbot itself remains read-only. Every
+`messages.updates` result, including an empty page, includes capture freshness so an Agent can
+distinguish a quiet conversation from delayed, unavailable, or insufficient capture evidence.
+`captureFreshness` is operational recency evidence, not a guarantee of complete message history.
 
 ## MCP
 
