@@ -19,7 +19,13 @@ WBOT_PLATFORM_URL=https://wbot-api-test.celados.com \
   wbot conversations.list '{ "limit": 50 }'
 ```
 
-See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics.
+See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics, and
+the package [changelog](packages/wbot/CHANGELOG.md) for release and migration notes.
+
+Conversation results expose the Tenant's `read` and `send` capabilities. Conversation and message
+update results also expose capture freshness, allowing Agents to distinguish quiet conversations
+from delayed, unavailable, or insufficient capture evidence without accessing private operator
+diagnostics.
 
 ## Public endpoints
 

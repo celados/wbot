@@ -66,6 +66,10 @@ jobs:
         if: steps.preflight.outputs.release == 'true'
         run: bun run check
 
+      - name: Typecheck
+        if: steps.preflight.outputs.release == 'true'
+        run: bun run typecheck
+
       - name: Test
         if: steps.preflight.outputs.release == 'true'
         run: bun run test
@@ -75,6 +79,23 @@ jobs:
         env:
           RELEASE_DIR: ${{ runner.temp }}/wbot-release
         run: bun run verify:package -- --output-dir "$RELEASE_DIR"
+
+      - name: Prepare curated release notes
+        if: steps.preflight.outputs.release == 'true'
+        env:
+          RELEASE_NOTES: ${{ runner.temp }}/wbot-release-notes.md
+        run: bun run ./packages/wbot/scripts/release-notes.ts >"$RELEASE_NOTES"
+
+      - name: Verify candidate artifact against current test Platform
+        if: steps.preflight.outputs.release == 'true' && steps.preflight.outputs.prerelease == 'false'
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/wbot-release
+          VERSION: ${{ steps.preflight.outputs.version }}
+          WBOT_PLATFORM_URL: https://wbot-api-test.celados.com
+          WBOT_API_KEY: ${{ secrets.WBOT_TEST_API_KEY }}
+        run: >-
+          bun run ./packages/wbot/scripts/verify-platform-compatibility.ts
+          --artifact "$RELEASE_DIR/wbot-$VERSION.tgz"
 
       - name: Create immutable release tag
         if: steps.preflight.outputs.release == 'true'
@@ -100,6 +121,7 @@ jobs:
           TAG: ${{ steps.preflight.outputs.tag }}
           PRERELEASE: ${{ steps.preflight.outputs.prerelease }}
           TARGET_SHA: ${{ inputs.source_sha || github.sha }}
+          RELEASE_NOTES: ${{ runner.temp }}/wbot-release-notes.md
         run: |
           releases=$(gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
@@ -116,13 +138,14 @@ jobs:
               -f target_commitish="$TARGET_SHA" \
               -F draft=true \
               -F prerelease="$PRERELEASE" \
-              -F generate_release_notes=true \
+              -F body=@"$RELEASE_NOTES" \
               -f make_latest="$make_latest")
           else
             release_json=$(jq '.[0]' <<<"$releases")
           fi
           [[ "$(jq -r .tag_name <<<"$release_json")" == "$TAG" ]]
           [[ "$(jq -r .prerelease <<<"$release_json")" == "$PRERELEASE" ]]
+          [[ "$(jq -r .body <<<"$release_json")" == "$(cat "$RELEASE_NOTES")" ]]
           echo "release_id=$(jq -r .id <<<"$release_json")" >>"$GITHUB_OUTPUT"
           echo "draft=$(jq -r .draft <<<"$release_json")" >>"$GITHUB_OUTPUT"
 

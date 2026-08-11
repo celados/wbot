@@ -16,10 +16,12 @@ type PackageJson = Readonly<{
 }>;
 
 const allowedEntries = new Set([
+  "CHANGELOG.md",
   "LICENSE",
   "README.md",
   "package.json",
   "platform-client.ts",
+  "platform-schemas.ts",
   "platform-types.ts",
   "wbot-cli.ts",
   "wbot-config.ts",
