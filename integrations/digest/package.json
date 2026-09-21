@@ -1,0 +1,14 @@
+{
+  "name": "@celados/wbot-digest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "convex:dev": "convex dev",
+    "convex:push": "convex dev --once",
+    "convex:dashboard": "convex dashboard"
+  },
+  "dependencies": {
+    "convex": "1.45.0"
+  }
+}

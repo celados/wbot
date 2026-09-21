@@ -2,13 +2,17 @@
   "name": "wbot-workspace",
   "private": true,
   "workspaces": [
-    "packages/wbot"
+    "packages/wbot",
+    "integrations/digest"
   ],
   "type": "module",
   "scripts": {
     "check": "vp check",
     "test": "vitest run packages/wbot",
     "typecheck": "tsc --noEmit",
+    "digest:dev": "bun run --cwd integrations/digest convex:dev",
+    "digest:push": "bun run --cwd integrations/digest convex:push",
+    "digest:dashboard": "bun run --cwd integrations/digest convex:dashboard",
     "verify:package": "bun run ./packages/wbot/scripts/verify-package-artifact.ts"
   },
   "devDependencies": {
