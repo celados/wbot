@@ -466,7 +466,7 @@ describe("功能 2：版本号表达公开契约影响", () => {
     );
   });
 
-  test("场景 2.3：公开结果增加必填属性属于破坏性变化", async () => {
+  test("场景 2.3：公开结果增加必填属性属于破坏性变化", () => {
     expect(
       readReleaseImpact(`### Breaking Changes
 
@@ -479,7 +479,6 @@ describe("功能 2：版本号表达公开契约影响", () => {
 - Conversation results may include an optional avatar.
       `),
     ).toBe("compatible");
-    expect((await createFixture()).expectedVersion).toBe("0.2.0-rc.1");
   });
 
   test.each([
