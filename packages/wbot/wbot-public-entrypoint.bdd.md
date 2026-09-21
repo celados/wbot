@@ -8,7 +8,7 @@ status: accepted # draft | accepted | superseded
 # Agent 只通过一个 wbot 命令使用 CLI 与 MCP - BDD 规格
 
 > `wbot` 是 `@celados/wbot` 唯一公开的可执行命令。
-> CLI 与 MCP 共享认证和只读能力；测试环境属于内部 dogfood 配置，不成为外部产品概念。
+> CLI 与 MCP 共享认证和读取能力，CLI 另提供文本发送和结果查询；测试环境属于内部 dogfood 配置，不成为外部产品概念。
 > 状态：**已确认**
 
 ---
@@ -18,7 +18,7 @@ status: accepted # draft | accepted | superseded
 **包含：**
 
 - 一个 package 只提供一个公开命令
-- Agent 通过 `wbot` 使用只读 CLI，通过 `wbot mcp` 启动 MCP
+- Agent 通过 `wbot` 使用读取与发送 CLI，通过 `wbot mcp` 启动 MCP
 - production 是默认服务，内部 dogfood 可以显式指定 test 服务
 - Codex 与 Claude Code Plugin 使用同一个公开命令启动 MCP
 
@@ -37,12 +37,13 @@ When 用户检查安装后可执行的命令
 Then 安装产物只提供 `wbot`
 And 不提供 production、test 或 MCP 专用的平行命令
 
-**场景 1.2：Agent 通过 wbot 使用只读 CLI**
+**场景 1.2：Agent 通过 wbot 使用读取与发送 CLI**
 Given Agent 已安装 `@celados/wbot`
 When Agent 查看 `wbot` 的命令规格
 Then Agent 看到现有会话与消息读取命令
 And Agent 看到启动 MCP 的 `mcp` 子命令
-And Agent 看不到发送或管理命令
+And Agent 看到 messages.send 与 outbound-sends.get
+And Agent 看不到 Operator 管理命令
 
 **场景 1.3：MCP host 通过 wbot mcp 启动服务**
 Given MCP host 已安装 `@celados/wbot`

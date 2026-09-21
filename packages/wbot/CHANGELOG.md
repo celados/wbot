@@ -4,6 +4,14 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Added CLI `messages.send` for authorized text sends with caller-owned `requestId`, and
+  `outbound-sends.get` to query execution status and reflected message evidence.
+- Validated required send inputs before requests and preserved Platform response validation,
+  authentication, and idempotency behavior. The CLI does not automatically retry or poll.
+- Kept MCP and Plugin tools read-only; no package version has been released for this addition yet.
+
 ## 0.2.0 - 2026-09-21
 
 ### Breaking Changes

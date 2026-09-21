@@ -4,7 +4,7 @@ type: Reference
 
 # Wbot
 
-公开分发的只读 WeChat Agent 客户端：单一 `wbot` CLI、MCP runtime 及 Codex / Claude plugins。私有 Switchboard 后端留在其自己的仓库。
+公开分发的 WeChat Agent 客户端：单一 `wbot` CLI 支持读取与文本发送，MCP runtime 及 Codex / Claude plugins 保持只读。私有 Switchboard 后端留在其自己的仓库。
 
 ## 公开合同
 
@@ -13,6 +13,7 @@ type: Reference
 - 成功 HTTP 响应不符合协议时报告 Platform Contract Error，与传输错误、业务错误区分。
 - 保留服务端提供的 capability 与 capture freshness 语义；安静会话不等于采集及时，客户端不暴露私有 operator diagnostics。
 - CLI / MCP 使用 HTTP Actions origin；测试显式设置 `WBOT_PLATFORM_URL`。具体地址见根 [README.md](README.md)，Convex API/WebSocket origin 不能用作 CLI base URL。
+- CLI 发送要求调用方提供稳定 `requestId`；只提交一次请求，以 `outbound-sends.get` 查询结果。`accepted` 不是送达回执，`indeterminate` 不得自动重发。
 
 ## 验证与发布
 

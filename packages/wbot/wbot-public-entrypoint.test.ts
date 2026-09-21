@@ -47,7 +47,7 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
     expect(packageJson.bin).toEqual({ wbot: "./wbot-cli.ts" });
   });
 
-  test("场景 1.2：Agent 通过 wbot 使用只读 CLI", async () => {
+  test("场景 1.2：Agent 通过 wbot 使用读取与发送 CLI", async () => {
     const result = await runCli(["@schema"]);
 
     expect(result.exitCode, result.stderr).toBe(0);
@@ -55,7 +55,9 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
     expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*history\(input:/);
     expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*updates\(input:/);
     expect(result.stdout).toContain("mcp()");
-    expect(result.stdout).not.toMatch(/send\(input:|outbound-sends|operator/i);
+    expect(result.stdout).toContain("send(input:");
+    expect(result.stdout).toContain("outbound-sends");
+    expect(result.stdout).not.toMatch(/operator/i);
   });
 
   test("场景 1.3：MCP host 通过 wbot mcp 启动服务", async () => {

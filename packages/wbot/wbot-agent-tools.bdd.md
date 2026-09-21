@@ -8,7 +8,7 @@ status: accepted # draft | accepted | superseded
 # Agent 通过 wbot CLI 与 Plugin 只读微信会话 - BDD 规格
 
 > wbot 是面向 Agent 的外部产品名。CLI 是可长期依赖的一等接口，Codex 与 Claude Code Plugin
-> 通过同一个 MCP runtime 提供等价能力。
+> 通过同一个 MCP runtime 提供等价读取能力。CLI 发送另见 [发送规格](wbot-send.bdd.md)。
 > 状态：**已确认**
 
 ---
@@ -26,7 +26,7 @@ status: accepted # draft | accepted | superseded
 
 **不包含：**
 
-- 发送消息、查询发送结果或任何禁用的写工具
+- CLI 发送与结果查询的详细行为（由 [发送规格](wbot-send.bdd.md) 定义）、MCP 写工具
 - Tenant、Membership、Conversation Grant 或 API Key 的创建与管理
 - 浏览器登录、OAuth device flow 或托管 Remote MCP
 - Agent memory、自动回复策略、后台调度或 Platform 托管的消费进度
@@ -42,10 +42,11 @@ And CLI 命令为 `wbot`
 And MCP runtime 通过 `wbot mcp` 启动
 And 外部帮助与 schema 不要求用户理解内部 Switchboard 名称
 
-**场景 1.2：CLI schema 只列出三个只读命令**
+**场景 1.2：CLI schema 列出读取与发送入口**
 Given Agent 尚未执行业务请求
 When Agent 查看 CLI schema
-Then schema 列出会话列表、消息历史和消息更新三个命令
+Then schema 列出会话列表、消息历史和消息更新三个读取命令
+And schema 列出 messages.send 与 outbound-sends.get
 And 每个命令声明结构化输入与结果
 And 查看 schema 不要求 API Key
 
@@ -57,10 +58,11 @@ And server 返回 `read_message_history`
 And server 返回 `read_message_updates`
 And 三个工具都声明为只读
 
-**场景 1.4：第一版不向 Agent 暴露写能力**
+**场景 1.4：MCP 保持只读，CLI 显式提供发送能力**
 Given Platform 内部已经具备发送相关能力
 When Agent 查看 CLI schema 或 MCP 工具列表
-Then Agent 看不到发送消息或查询发送结果的入口
+Then CLI 提供发送和结果查询入口
+And MCP 不提供发送或结果查询工具
 And Agent 看不到 Operator、授权、凭据管理或派生知识写入入口
 
 ## 功能 2：用户一次配置凭据后，CLI 与 Plugin 安全复用

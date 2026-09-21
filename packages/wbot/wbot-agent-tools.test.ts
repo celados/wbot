@@ -41,8 +41,8 @@ afterEach(async () => {
   );
 });
 
-describe("功能 1：外部 Agent 看到 wbot 只读工具面", () => {
-  test("场景 1.1：CLI schema 使用 wbot 品牌且只暴露三条只读命令", async () => {
+describe("功能 1：CLI 发送能力与 MCP 只读工具面", () => {
+  test("场景 1.1：CLI schema 使用 wbot 品牌并暴露读取和发送命令", async () => {
     const result = await runCli(["@schema"]);
 
     expect(result.exitCode, result.stderr).toBe(0);
@@ -50,7 +50,10 @@ describe("功能 1：外部 Agent 看到 wbot 只读工具面", () => {
     expect(result.stdout).toMatch(/conversations:\s*\{[\s\S]*list\(input:/);
     expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*history\(input:/);
     expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*updates\(input:/);
-    expect(result.stdout).not.toMatch(/send\(input:|outbound-sends|operator/i);
+    expect(result.stdout).toContain("send(input:");
+    expect(result.stdout).toContain("outbound-sends");
+    expect(result.stdout).toContain("requestId: string");
+    expect(result.stdout).not.toMatch(/operator/i);
   });
 
   test("场景 1.2：MCP 使用 wbot 品牌且只列出同样三条只读工具", async () => {

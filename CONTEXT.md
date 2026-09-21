@@ -7,8 +7,8 @@ generated: { by: codex/gpt-5, at: "2026-08-11T11:31:16+08:00" }
 
 # wbot
 
-wbot is a publicly distributed Agent client for reading authorized conversations through a
-versioned Platform API.
+wbot is a publicly distributed Agent client for reading authorized conversations and sending
+authorized text messages through a versioned Platform API.
 
 ## Language
 

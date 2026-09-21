@@ -22,6 +22,15 @@ const messagePageInput = v.strictObject({
   cursor: v.optional(nonEmptyString),
   limit,
 });
+const messageSendInput = v.strictObject({
+  conversationId: nonEmptyString,
+  requestId: nonEmptyString,
+  text: nonEmptyString,
+  requestedBy: nonEmptyString,
+});
+const outboundSendGetInput = v.strictObject({
+  outboundSendId: nonEmptyString,
+});
 
 const commands = {
   auth: group(
@@ -44,7 +53,7 @@ const commands = {
     },
   ),
   messages: group(
-    { description: "Read wbot messages" },
+    { description: "Read and send wbot messages" },
     {
       history: c
         .meta({ description: "Read newest messages and page backward" })
@@ -52,6 +61,22 @@ const commands = {
       updates: c
         .meta({ description: "Read messages forward from an updates cursor" })
         .input(schema(messagePageInput)),
+      send: c
+        .meta({
+          description: "Queue a text send with a caller-owned requestId; not a delivery receipt",
+        })
+        .input(schema(messageSendInput)),
+    },
+  ),
+  "outbound-sends": group(
+    { description: "Inspect text send outcomes" },
+    {
+      get: c
+        .meta({
+          description:
+            "Get a send outcome; accepted is not delivered, and indeterminate must not be automatically resent",
+        })
+        .input(schema(outboundSendGetInput)),
     },
   ),
   mcp: c.meta({
@@ -62,7 +87,7 @@ const commands = {
 const app = cli(commands, {
   name: "wbot",
   version: packageJson.version,
-  description: "Read WeChat conversations through wbot",
+  description: "Read WeChat conversations and send authorized text messages through wbot",
 });
 
 export const runWbotCli = async () => {
@@ -87,6 +112,12 @@ export const runWbotCli = async () => {
           JSON.stringify(await callPlatform((client) => client.queryMessageHistory(args.input))),
         updates: async (args) =>
           JSON.stringify(await callPlatform((client) => client.queryMessages(args.input))),
+        send: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.sendMessage(args.input))),
+      },
+      "outbound-sends": {
+        get: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.getOutboundSend(args.input))),
       },
       mcp: runWbotMcpServer,
     },

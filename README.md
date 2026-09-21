@@ -1,6 +1,10 @@
 # wbot
 
-wbot is an Agent-first, read-only interface to authorized WeChat conversations. This public repository owns the single `wbot` command, its MCP runtime, and the Codex and Claude Code plugins. The private Switchboard backend remains outside this repository.
+wbot is an Agent-first interface to authorized WeChat conversations, with reading and text sending
+in the CLI and read-only MCP tools. This public repository owns the single `wbot` command, its MCP
+runtime, and the Codex and Claude Code plugins. The private Switchboard backend remains outside this repository.
+
+Web viewer (test): [wbot-web-test.celados.com](https://wbot-web-test.celados.com/).
 
 ## Install
 
@@ -27,6 +31,10 @@ update results also expose capture freshness, allowing Agents to distinguish qui
 from delayed, unavailable, or insufficient capture evidence without accessing private operator
 diagnostics.
 
+The CLI also supports `wbot messages.send` and `wbot outbound-sends.get`. See
+[text sending](packages/wbot/README.md#send-text-from-the-cli) for caller-owned idempotency and
+send-result semantics. MCP and Plugin tools remain read-only.
+
 ## Public endpoints
 
 The Agent CLI and MCP use the production HTTP Actions origin
@@ -45,3 +53,16 @@ bun run verify:package
 ```
 
 Changing `packages/wbot/package.json` version on `main` creates an immutable tag and public GitHub Release after all gates pass.
+
+## Daily digest integration
+
+[integrations/digest](integrations/digest/README.md) contains the daily group-chat digest integration
+scaffold. It uses an independent Convex project and deployment, and accesses Switchboard through
+the public Platform HTTP interface. Its code is maintained in this workspace and is excluded from
+the CLI release artifact. Digest generation, scheduling, and sending are not implemented yet.
+
+After configuring `integrations/digest/.env.local`, start development from the repository root:
+
+```sh
+bun run digest:dev
+```
