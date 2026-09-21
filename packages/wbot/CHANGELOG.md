@@ -4,6 +4,36 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-21
+
+### Breaking Changes
+
+- Replaced the legacy message `media` projection with the unified `attachment` projection used by
+  the active Platform contract.
+- Added required `capabilities` and `captureFreshness` properties to conversation results and a
+  required `captureFreshness` property to message-update results.
+- Added current `nudge`, conversation avatar, target identity, and attachment descriptor variants
+  to the exported result types.
+
+### Added
+
+- Validated successful Platform responses at the HTTP boundary while tolerating unknown additive
+  fields.
+- Added the sanitized `PlatformContractError` with machine code `invalid_platform_response`.
+- Surfaced Platform API deprecation and sunset metadata on stderr without contaminating CLI JSON or
+  MCP protocol output.
+- Added one release identity across the package, CLI, MCP server, Plugins, tags, and artifacts.
+- Added curated changelog release notes and a stable-release compatibility gate against the current
+  test Platform.
+
+### Migration
+
+- Read message binary state from `attachment` instead of `media`.
+- Handle the required conversation capabilities and capture freshness fields, including empty
+  message-update pages.
+- Consumers upgrading from `0.1.x` must handle the result changes above.
+- Consumers already using `0.2.0-rc.1` have no additional API migration steps.
+
 ## 0.2.0-rc.1 - 2026-08-11
 
 ### Breaking Changes
