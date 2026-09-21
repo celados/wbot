@@ -4,13 +4,25 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.1 - 2026-09-21
+
 ### Added
 
 - Added CLI `messages.send` for authorized text sends with caller-owned `requestId`, and
   `outbound-sends.get` to query execution status and reflected message evidence.
 - Validated required send inputs before requests and preserved Platform response validation,
   authentication, and idempotency behavior. The CLI does not automatically retry or poll.
-- Kept MCP and Plugin tools read-only; no package version has been released for this addition yet.
+- Kept MCP and Plugin tools read-only.
+
+### Fixed
+
+- Corrected the repository website to `https://wbot-web-test.celados.com/`.
+
+### Migration
+
+- Existing read commands and MCP tools are unchanged. Sending requires a `send` grant and explicit
+  `conversationId`, `requestId`, `text`, and `requestedBy` fields. Save the returned `outboundSendId`
+  and query it with `outbound-sends.get`; accepted invocation is not a delivery receipt.
 
 ## 0.2.0 - 2026-09-21
 
