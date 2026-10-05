@@ -8,7 +8,7 @@ type: Reference
 
 ## 公开合同
 
-- 修改 CLI、MCP、配置或响应语义前读 [package README](packages/wbot/README.md)；版本与兼容性变化读 [CONTEXT.md](CONTEXT.md) 和 [兼容性 ADR](docs/adr/0001-versioning-and-platform-compatibility.md)。
+- 修改 CLI、MCP、配置或响应语义前读 [package README](packages/wbot/README.md)；版本与兼容性变化读 [GLOSSARY.md](GLOSSARY.md) 和 [兼容性 ADR](docs/adr/0001-versioning-and-platform-compatibility.md)。
 - wbot Release Version 统一 package、CLI、MCP、plugins、tag 和产物；Platform API Major 独立演进。同一 API major 保持向后兼容。
 - 成功 HTTP 响应不符合协议时报告 Platform Contract Error，与传输错误、业务错误区分。
 - 保留服务端提供的 capability 与 capture freshness 语义；安静会话不等于采集及时，客户端不暴露私有 operator diagnostics。
