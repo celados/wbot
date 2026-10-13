@@ -42,7 +42,7 @@ Successful commands write one JSON value to stdout. Errors go to stderr and exit
 
 For internal test-deployment dogfood, prefix the same commands with `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com`.
 
-History cursors page toward older messages. Updates cursors move forward by Platform ingestion order. Save each updates cursor in the calling Agent and explicitly pass it on the next call; wbot does not store a consumer checkpoint.
+History cursors page toward older messages. Updates cursors move forward by Platform change-sequence order, including retractions of older messages. Save each updates cursor in the calling Agent and explicitly pass it on the next call; wbot does not store a consumer checkpoint.
 
 Each conversation includes `capabilities` and `captureFreshness`. Capabilities describe the
 Tenant's current `read` and `send` authorization. Sending requires an active `send` grant. Every
@@ -96,3 +96,18 @@ wbot mcp
 For internal test-deployment dogfood, start it with `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com wbot mcp`.
 
 It exposes `list_conversations`, `read_message_history`, and `read_message_updates`. Version 1 has no send, grant, operator, or credential-management MCP tools.
+
+## Message type evolution
+
+`retracted` is an explicit content kind; `revision` and `referenceId` are retained when present,
+including reference IDs on quotes. Merge repeated message IDs by revision instead of treating a
+retraction as a new user message. `group_invitation` uses `sender` for the inviter and optional
+`invitedMembers` for the members' stable Platform identity IDs and display names.
+
+An unfamiliar future content kind is returned as `unknown` with `preview: "Unsupported message type"`,
+`originalKind`, and the complete `originalContent` object. This applies to message bodies, quotes,
+and conversation previews. An unfamiliar latest-message type is `unknown` with `originalType`.
+Known kinds still require their documented fields; malformed payloads remain contract errors.
+No records are dropped, and cursors, pagination flags, and capture freshness are preserved.
+After upgrading from a client that rejected a valid kind, retry the same cursor rather than skipping
+past the offending message. This does not recover source records missing from the Platform.

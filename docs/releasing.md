@@ -62,7 +62,9 @@ renamed, narrowed, or assigned incompatible semantics in place. A change that ca
 existing contract requires a new path such as `/platform/v2`.
 
 Unknown response fields are valid compatible additions. wbot response validators must ignore or
-preserve them rather than reject the response. Known required fields, discriminated unions, cursors,
+preserve them rather than reject the response. Unknown message content kinds use the documented lossless `unknown` wrapper; unknown preview types
+retain `originalType`. Known content variants remain validated without falling through that wrapper.
+Known required fields, other discriminated unions, cursors,
 and error envelopes are validated at the HTTP boundary. A successful HTTP response that violates
 those requirements fails closed with `PlatformContractError` and stable machine code
 `invalid_platform_response`. Diagnostics may identify the endpoint and failing field paths, but must

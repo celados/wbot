@@ -2,7 +2,25 @@ import * as v from "valibot";
 
 const nullableString = v.nullable(v.string());
 
-const messageContentSchema = v.variant("kind", [
+const messageKindSchema = v.picklist([
+  "text",
+  "image",
+  "audio",
+  "video",
+  "file",
+  "emoji",
+  "location",
+  "link",
+  "mini_program",
+  "nudge",
+  "unknown",
+  "retracted",
+  "group_invitation",
+]);
+
+const knownMessageContentSchema = v.variant("kind", [
+  v.looseObject({ kind: v.literal("retracted") }),
+  v.looseObject({ kind: v.literal("group_invitation") }),
   v.looseObject({ kind: v.literal("text"), text: nullableString }),
   v.looseObject({ kind: v.literal("image") }),
   v.looseObject({ kind: v.literal("audio") }),
@@ -33,6 +51,36 @@ const messageContentSchema = v.variant("kind", [
   v.looseObject({ kind: v.literal("unknown"), preview: v.string() }),
 ]);
 
+// Only unfamiliar kinds enter this branch. Malformed known variants must still fail.
+const futureMessageContentSchema = v.pipe(
+  v.looseObject({ kind: v.pipe(v.string(), v.minLength(1)) }),
+  v.check((content) => !v.is(messageKindSchema, content.kind)),
+  v.transform((content) => ({
+    kind: "unknown" as const,
+    preview: "Unsupported message type",
+    originalKind: content.kind,
+    originalContent: content,
+  })),
+);
+const messageContentSchema = v.union([knownMessageContentSchema, futureMessageContentSchema]);
+
+const latestMessageSchema = v.pipe(
+  v.looseObject({
+    id: v.string(),
+    direction: v.picklist(["in", "out"]),
+    type: v.pipe(v.string(), v.minLength(1)),
+    text: nullableString,
+    content: v.nullable(messageContentSchema),
+    occurredAtMs: v.string(),
+  }),
+  v.transform((message) => {
+    const type = v.safeParse(messageKindSchema, message.type);
+    return type.success
+      ? { ...message, type: type.output }
+      : { ...message, type: "unknown" as const, originalType: message.type };
+  }),
+);
+
 const captureFreshnessSchema = v.looseObject({
   status: v.picklist(["unknown", "current", "delayed", "unavailable"]),
   asOfMs: nullableString,
@@ -53,28 +101,7 @@ const conversationSchema = v.looseObject({
   capabilities: v.array(v.picklist(["read", "send"])),
   captureFreshness: captureFreshnessSchema,
   avatar: v.optional(conversationAvatarSchema),
-  latestMessage: v.nullable(
-    v.looseObject({
-      id: v.string(),
-      direction: v.picklist(["in", "out"]),
-      type: v.picklist([
-        "text",
-        "image",
-        "audio",
-        "video",
-        "file",
-        "emoji",
-        "location",
-        "link",
-        "mini_program",
-        "nudge",
-        "unknown",
-      ]),
-      text: nullableString,
-      content: v.nullable(messageContentSchema),
-      occurredAtMs: v.string(),
-    }),
-  ),
+  latestMessage: v.nullable(latestMessageSchema),
 });
 
 export const conversationsPageSchema = v.looseObject({
@@ -111,14 +138,18 @@ const messageAttachmentSchema = v.variant("status", [
 
 const messageSchema = v.looseObject({
   messageId: v.string(),
+  referenceId: v.optional(v.string()),
+  revision: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
   conversationId: v.string(),
   direction: v.picklist(["in", "out"]),
   content: messageContentSchema,
   sender: v.nullable(messageIdentitySchema),
   target: v.optional(v.nullable(messageIdentitySchema)),
+  invitedMembers: v.optional(v.array(messageIdentitySchema)),
   replyTo: v.nullable(
     v.looseObject({
       messageId: nullableString,
+      referenceId: v.optional(v.string()),
       sender: v.nullable(messageIdentitySchema),
       occurredAtMs: nullableString,
       content: messageContentSchema,

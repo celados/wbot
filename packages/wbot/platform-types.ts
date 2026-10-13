@@ -5,6 +5,8 @@ export type Page<T> = {
 };
 
 export type MessageContent =
+  | { kind: "retracted" }
+  | { kind: "group_invitation" }
   | { kind: "text"; text: string | null }
   | { kind: "image" }
   | { kind: "audio" }
@@ -28,7 +30,12 @@ export type MessageContent =
       thumbnailUrl: string | null;
     }
   | { kind: "nudge"; suffix: string | null }
-  | { kind: "unknown"; preview: string };
+  | {
+      kind: "unknown";
+      preview: string;
+      originalKind?: string;
+      originalContent?: Record<string, unknown>;
+    };
 
 export type ConversationsQueryInput = {
   cursor?: string;
@@ -60,6 +67,7 @@ export type ConversationResult = {
     id: string;
     direction: "in" | "out";
     type: MessageContent["kind"];
+    originalType?: string;
     text: string | null;
     content: MessageContent | null;
     occurredAtMs: string;
@@ -103,13 +111,17 @@ export type MessageAttachment =
     };
 
 export type MessageResult = {
+  referenceId?: string;
+  revision?: number;
   messageId: string;
   conversationId: string;
   direction: "in" | "out";
   content: MessageContent;
   sender: MessageIdentity | null;
   target?: MessageIdentity | null;
+  invitedMembers?: Array<MessageIdentity>;
   replyTo: {
+    referenceId?: string;
     messageId: string | null;
     sender: MessageIdentity | null;
     occurredAtMs: string | null;

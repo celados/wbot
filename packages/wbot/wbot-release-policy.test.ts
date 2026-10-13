@@ -128,6 +128,127 @@ describe("功能 3：每个发布版本都有可迁移的变更记录", () => {
   });
 });
 
+describe("message evolution never stalls a valid page", () => {
+  test.each(["retracted", "group_invitation", "future_poll"])(
+    "CLI and MCP retain %s and its cursor",
+    async (kind) => {
+      const content = kind === "future_poll" ? { kind, options: ["one", "two"] } : { kind };
+      const page = {
+        items: [
+          {
+            ...createMessageResult(),
+            content,
+            revision: 1,
+            referenceId: "reference-1",
+            invitedMembers: [{ identityId: "member-1", displayName: "Bob" }],
+            replyTo: { messageId: null, sender: null, occurredAtMs: null, content },
+          },
+        ],
+        nextCursor: "cursor-after-notice",
+        hasMore: true,
+        captureFreshness: { status: "delayed", asOfMs: "1786000000000" },
+      };
+      const url = await createPlatformServer(page);
+      const expectedContent =
+        kind === "future_poll"
+          ? {
+              kind: "unknown",
+              preview: "Unsupported message type",
+              originalKind: kind,
+              originalContent: content,
+            }
+          : content;
+      for (const verb of ["history", "updates"]) {
+        const cli = await runCli(
+          [
+            "messages." + verb,
+            JSON.stringify({ conversationId: "conversation-1", cursor: "cursor-before-notice" }),
+          ],
+          { WBOT_API_KEY: "fixture-secret", WBOT_PLATFORM_URL: url },
+        );
+        expect(cli.exitCode, cli.stderr).toBe(0);
+        expect(JSON.parse(cli.stdout)).toMatchObject({
+          items: [
+            {
+              content: expectedContent,
+              revision: 1,
+              referenceId: "reference-1",
+              replyTo: { content: expectedContent },
+            },
+          ],
+          nextCursor: "cursor-after-notice",
+          hasMore: true,
+        });
+      }
+      const mcp = await createStdioMcpFixture({ WBOT_PLATFORM_URL: url });
+      try {
+        for (const name of ["read_message_history", "read_message_updates"]) {
+          const result = await mcp.client.callTool({
+            name,
+            arguments: { conversationId: "conversation-1", cursor: "cursor-before-notice" },
+          });
+          expect(result.isError, JSON.stringify(result)).not.toBe(true);
+          expect(result.structuredContent).toMatchObject({
+            result: { items: [{ content: expectedContent }], nextCursor: "cursor-after-notice" },
+          });
+        }
+      } finally {
+        await mcp.close();
+      }
+      const listUrl = await createPlatformServer({
+        items: [
+          {
+            ...createConversationResult(),
+            latestMessage: {
+              id: "message-1",
+              direction: "in",
+              type: kind,
+              text: null,
+              content,
+              occurredAtMs: "1786000000000",
+            },
+          },
+        ],
+        nextCursor: "list-next",
+        hasMore: false,
+      });
+      const list = await runCli(["conversations.list"], {
+        WBOT_API_KEY: "fixture-secret",
+        WBOT_PLATFORM_URL: listUrl,
+      });
+      expect(list.exitCode, list.stderr).toBe(0);
+      expect(JSON.parse(list.stdout).items[0].latestMessage).toMatchObject({
+        type: kind === "future_poll" ? "unknown" : kind,
+        content: expectedContent,
+      });
+    },
+  );
+
+  test.each([
+    { kind: "text" },
+    { kind: "text", text: 42 },
+    { kind: "unknown" },
+    { kind: "nudge", suffix: 42 },
+    { kind: "" },
+    { kind: 42 },
+    {},
+  ])("malformed known content still fails closed: %j", async (content) => {
+    const client = createPlatformClient({
+      baseUrl: "https://platform.example.test",
+      tenantApiKey: "fixture-secret",
+      fetch: async () =>
+        Response.json({
+          items: [{ ...createMessageResult(), content }],
+          nextCursor: "next",
+          hasMore: false,
+        }),
+    });
+    await expect(
+      client.queryMessageHistory({ conversationId: "conversation-1" }),
+    ).rejects.toMatchObject({ code: "invalid_platform_response" });
+  });
+});
+
 describe("功能 4：Agent 只接收符合契约的 Platform 结果", () => {
   test("场景 4.1：未知新增字段不会破坏旧客户端", async () => {
     const client = createPlatformClient({

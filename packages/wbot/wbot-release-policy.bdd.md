@@ -155,3 +155,18 @@ And 尚未取得当前 test Platform 的兼容证据
 When 发布者检查发布状态
 Then 版本仍不能标记为稳定
 And 发布状态明确指出缺少的兼容 gate
+
+## Message evolution without cursor loss
+
+Given a valid page containing retracted, group_invitation, or a future content kind
+When CLI or MCP reads history or updates
+Then every message and its quote remain available with the same nextCursor and hasMore
+And retracted and group_invitation remain explicit known kinds
+And future content becomes unknown with originalKind and complete originalContent
+And unknown conversation preview types retain originalType
+And optional revision, referenceId and invitedMembers survive the HTTP boundary
+
+Given malformed content for a known kind or a missing/empty/non-string kind
+When a page is read
+Then the client still reports a sanitized invalid_platform_response
+And no successful cursor or partial page is emitted.

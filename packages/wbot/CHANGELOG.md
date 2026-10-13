@@ -4,6 +4,28 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.2 - 2026-10-13
+
+### Fixed
+
+- CLI and MCP no longer reject an entire message page or conversation list when it contains a
+  retracted message, a retracted quote, or a group invitation.
+- Future message content kinds are returned as `unknown` with `originalKind` and `originalContent`,
+  retaining every record and the server cursor. Future conversation preview types similarly use
+  `unknown` with `originalType`. Malformed known types still report `invalid_platform_response`.
+
+### Added
+
+- Optional typed `revision`, `referenceId`, and `invitedMembers` response fields. For group
+  invitations, `sender` is the inviter and `invitedMembers` identifies the invited members.
+
+### Migration
+
+- Upgrade, then retry the same failed cursor. Do not skip a record or reset a valid checkpoint.
+- Merge repeated message IDs by `revision`; a retraction can update an older message. Old unsupported
+  cursor versions still require a new bootstrap when the Platform explicitly reports that error.
+- No credentials, consumer checkpoints, or server history are modified by this release.
+
 ## 0.2.1 - 2026-09-21
 
 ### Added
