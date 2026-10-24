@@ -44,7 +44,7 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
       bin: Record<string, string>;
     };
 
-    expect(packageJson.bin).toEqual({ wbot: "./wbot-cli.ts" });
+    expect(packageJson.bin).toEqual({ wbot: "./dist/wbot.js" });
   });
 
   test("场景 1.2：Agent 通过 wbot 使用读取与发送 CLI", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@celados/wbot",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Agent-first conversation reading and authorized text sending with read-only MCP tools",
   "license": "MIT",
@@ -10,24 +10,22 @@
     "directory": "packages/wbot"
   },
   "bin": {
-    "wbot": "./wbot-cli.ts"
+    "wbot": "./dist/wbot.js"
   },
   "files": [
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
-    "platform-client.ts",
-    "platform-schemas.ts",
-    "platform-types.ts",
-    "wbot-cli.ts",
-    "wbot-config.ts",
-    "wbot-mcp.ts"
+    "dist/wbot.js"
   ],
   "type": "module",
-  "dependencies": {
+  "scripts": {
+    "build": "bun build ./wbot-cli.ts --target=bun --outfile=dist/wbot.js"
+  },
+  "devDependencies": {
+    "@celados/argc": "^7.11.3",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@valibot/to-json-schema": "1.7.1",
-    "argc": "github:ethan-huo/argc#v7.5.0",
     "valibot": "1.4.2",
     "zod": "4.4.3"
   },
