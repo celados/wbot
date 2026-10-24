@@ -4,6 +4,14 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.3 - 2026-10-24
+
+### Changed
+
+- The release artifact is a single Bun bundle (`dist/wbot.js`) with its runtime dependencies
+  inlined. Installing it no longer resolves any dependency, including argc, which moved to a
+  private registry; CLI and MCP behavior are unchanged.
+
 ## 0.2.2 - 2026-10-13
 
 ### Fixed

@@ -20,12 +20,7 @@ const allowedEntries = new Set([
   "LICENSE",
   "README.md",
   "package.json",
-  "platform-client.ts",
-  "platform-schemas.ts",
-  "platform-types.ts",
-  "wbot-cli.ts",
-  "wbot-config.ts",
-  "wbot-mcp.ts",
+  "dist/wbot.js",
 ]);
 const forbiddenPathPattern =
   /(^|\/)(?:\.env(?:\..*)?|\.npmrc|bunfig\.toml|[^/]*\.test\.[^/]+|__tests__|evals?|scripts?|sources?|policy)(?:\/|$)/i;
@@ -56,6 +51,9 @@ try {
     throw new Error("The wbot package must remain private to prevent registry publication.");
   }
 
+  // The artifact ships a Bun bundle: runtime deps (incl. the private @celados/argc)
+  // are inlined, so public consumers install with no registry auth.
+  await runCommand(["bun", "run", "build"], packageRoot);
   const packed = await runCommand(
     ["npm", "pack", "--json", "--pack-destination", packDirectory, packageRoot],
     temporaryRoot,
@@ -117,7 +115,7 @@ function parseOutputDirectory(arguments_: readonly string[]): string | undefined
 }
 
 async function verifyPackageContents(paths: readonly string[]): Promise<void> {
-  for (const required of ["wbot-cli.ts", "wbot-mcp.ts", "package.json"]) {
+  for (const required of ["dist/wbot.js", "package.json"]) {
     if (!paths.includes(required)) {
       throw new Error(`The package is missing required entry: ${required}`);
     }

@@ -257,7 +257,7 @@ describe("功能 6 与 7：公共 package 和两个 Plugin 共享 runtime", () =
 
     expect(packageJson.name).toBe("@celados/wbot");
     expect(packageJson.private).toBe(true);
-    expect(packageJson.bin).toEqual({ wbot: "./wbot-cli.ts" });
+    expect(packageJson.bin).toEqual({ wbot: "./dist/wbot.js" });
   });
 
   test("场景 6.1 至 6.3：Codex 与 Claude Plugin 启动相同 MCP 且不携带凭据", async () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
-import { c, cli, group } from "argc";
+import { c, cli, group } from "@celados/argc";
 import * as v from "valibot";
 
 import type { PlatformClient } from "./platform-client";
