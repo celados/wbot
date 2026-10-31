@@ -4,7 +4,7 @@ type: Reference
 
 # Wbot
 
-公开分发的 WeChat Agent 客户端：单一 `wbot` CLI 支持读取与文本发送，MCP runtime 及 Codex / Claude plugins 保持只读。私有 Switchboard 后端留在其自己的仓库。
+公开分发的 WeChat Agent 客户端：单一 `wbot` CLI 支持读取与文本 / JPEG 图片发送，MCP runtime 及 Codex / Claude plugins 保持只读。私有 Switchboard 后端留在其自己的仓库。
 
 ## 公开合同
 

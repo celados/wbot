@@ -1,14 +1,14 @@
 ---
 type: Behavior Spec
-title: CLI 文本发送与结果查询
+title: CLI 文本、JPEG 发送与结果查询
 status: accepted
 description: 按用户授权增加 CLI 发送入口，沿用 Platform 幂等与结果语义，MCP 保持只读。
 ---
 
-# CLI 文本发送与结果查询
+# CLI 文本、JPEG 发送与结果查询
 
 范围：`messages.send`、`outbound-sends.get`、schema 发现、输入校验及错误处理。
-不增加自动重试、自动生成 requestId、自动轮询、媒体发送或 MCP 写工具。
+不增加自动重试、自动生成 requestId、自动轮询、非 JPEG 媒体发送或 MCP 写工具。
 
 ## 场景 1：发现并发送文本
 
@@ -80,4 +80,35 @@ When Agent 查看 CLI schema
 Then 可以发现发送及结果查询的输入要求
 And MCP 仍只提供现有三个只读工具
 And 安装产物提供相同 CLI 能力
+```
+
+## 场景 7：JPEG 文件通过同一发送接口提交
+
+```gherkin
+Given 调用方提供 imagePath 指向一个不超过 5 MiB 的普通 JPEG 文件
+When messages.send 收到 conversationId、requestId、requestedBy 和 imagePath
+Then CLI 仅提交一次 multipart 请求到既有 messages/send 路由
+And metadata 保留调用方身份字段并包含 content.kind=image
+And image 部分包含原始文件字节，且不上传本地文件路径
+And 文字输入仍使用原有 JSON 请求
+```
+
+## 场景 8：互斥与本地文件边界
+
+```gherkin
+Given 调用方同时提供 text 和 imagePath、两者都不提供、文件不存在、不是普通文件、文件为空、超过大小限制或不是 JPEG
+When CLI 验证输入
+Then 请求在本地失败，stdout 为空，且不访问 Platform
+And 文件读取有实际字节上限，文件变化不能导致无界读取
+```
+
+## 场景 9：图片结果和失败保留发送语义
+
+```gherkin
+Given 一个合法图片发送请求
+When 响应丢失、返回业务错误或成功响应不符合协议
+Then CLI 非零退出且不自动重试，不输出图片字节或凭据
+And 稳定 requestId 不会被改写
+And 图片结果查询沿用 queued/processing/accepted/failed/indeterminate
+And MCP 保持三个只读工具
 ```

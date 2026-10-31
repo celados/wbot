@@ -1,6 +1,6 @@
 # wbot
 
-wbot is an Agent-first interface to authorized WeChat conversations, with reading and text sending
+wbot is an Agent-first interface to authorized WeChat conversations, with reading and text/JPEG sending
 in the CLI and read-only MCP tools. This public repository owns the single `wbot` command, its MCP
 runtime, and the Codex and Claude Code plugins. The private Switchboard backend remains outside this repository.
 

@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
+import { MAX_SEND_IMAGE_BYTES } from "./platform-client";
+
 import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import { c, cli, group } from "@celados/argc";
 import * as v from "valibot";
@@ -25,7 +29,8 @@ const messagePageInput = v.strictObject({
 const messageSendInput = v.strictObject({
   conversationId: nonEmptyString,
   requestId: nonEmptyString,
-  text: nonEmptyString,
+  text: v.optional(nonEmptyString),
+  imagePath: v.optional(nonEmptyString),
   requestedBy: nonEmptyString,
 });
 const outboundSendGetInput = v.strictObject({
@@ -63,13 +68,14 @@ const commands = {
         .input(schema(messagePageInput)),
       send: c
         .meta({
-          description: "Queue a text send with a caller-owned requestId; not a delivery receipt",
+          description:
+            "Queue text or one JPEG using exactly one of text/imagePath and a caller-owned requestId; not a delivery receipt",
         })
         .input(schema(messageSendInput)),
     },
   ),
   "outbound-sends": group(
-    { description: "Inspect text send outcomes" },
+    { description: "Inspect send outcomes" },
     {
       get: c
         .meta({
@@ -87,7 +93,7 @@ const commands = {
 const app = cli(commands, {
   name: "wbot",
   version: packageJson.version,
-  description: "Read WeChat conversations and send authorized text messages through wbot",
+  description: "Read WeChat conversations and send authorized text or JPEG images through wbot",
 });
 
 export const runWbotCli = async () => {
@@ -112,8 +118,20 @@ export const runWbotCli = async () => {
           JSON.stringify(await callPlatform((client) => client.queryMessageHistory(args.input))),
         updates: async (args) =>
           JSON.stringify(await callPlatform((client) => client.queryMessages(args.input))),
-        send: async (args) =>
-          JSON.stringify(await callPlatform((client) => client.sendMessage(args.input))),
+        send: async (args) => {
+          const { text, imagePath, ...identity } = args.input;
+          if ((text === undefined) === (imagePath === undefined)) {
+            throw new Error("Specify exactly one of text or imagePath");
+          }
+          const input =
+            imagePath === undefined
+              ? { ...identity, text: text! }
+              : {
+                  ...identity,
+                  content: { kind: "image" as const, base64: await readImageFile(imagePath) },
+                };
+          return JSON.stringify(await callPlatform((client) => client.sendMessage(input)));
+        },
       },
       "outbound-sends": {
         get: async (args) =>
@@ -172,5 +190,26 @@ async function readHiddenApiKey() {
     input.setRawMode(false);
     input.pause();
     process.stderr.write("\n");
+  }
+}
+
+async function readImageFile(path: string): Promise<string> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size < 1 || info.size > MAX_SEND_IMAGE_BYTES) {
+      throw new Error("Expected a regular JPEG file within 5 MiB");
+    }
+    const bytes = Buffer.alloc(MAX_SEND_IMAGE_BYTES + 1);
+    let size = 0;
+    while (size < bytes.length) {
+      const { bytesRead } = await file.read(bytes, size, bytes.length - size, size);
+      if (!bytesRead) break;
+      size += bytesRead;
+    }
+    if (size > MAX_SEND_IMAGE_BYTES) throw new Error("Image exceeds 5 MiB");
+    return bytes.subarray(0, size).toString("base64");
+  } finally {
+    await file.close();
   }
 }

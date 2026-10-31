@@ -142,6 +142,14 @@ export type MessageSendInput = {
   requestedBy: string;
 };
 
+export type ImageMessageSendInput = {
+  conversationId: string;
+  requestId: string;
+  requestedBy: string;
+  content: { kind: "image"; base64: string };
+  text?: never;
+};
+
 export type MessageSendResult = {
   outboundSendId: string;
   conversationId: string;

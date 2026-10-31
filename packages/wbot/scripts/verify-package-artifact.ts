@@ -89,6 +89,7 @@ try {
     "history(input:",
     "updates(input:",
     "send(input:",
+    "imagePath",
     "outbound-sends",
     "mcp()",
   ]) {
@@ -97,6 +98,7 @@ try {
     }
   }
   await runCommand(["test", "-x", wbot], consumerDirectory);
+  await verifyImageSend(wbot, consumerDirectory);
 
   if (outputDirectory) {
     await writeReleaseAssets(tarballPath, packageJson.version, outputDirectory);
@@ -179,4 +181,63 @@ async function runCommand(
     );
   }
   return { stdout, stderr };
+}
+
+async function verifyImageSend(wbot: string, directory: string): Promise<void> {
+  const bytes = new Uint8Array([255, 216, 255, 224, 0, 2, 255, 217]);
+  const imagePath = join(directory, "private-image.jpg");
+  await writeFile(imagePath, bytes);
+  const identity = {
+    conversationId: "fixture-room",
+    requestId: "fixture-image",
+    requestedBy: "artifact-check",
+  };
+  const result = {
+    outboundSendId: "fixture-send",
+    conversationId: identity.conversationId,
+    status: "queued",
+  };
+  let requests = 0;
+  let valid = false;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests++;
+      const form = await request.formData();
+      const image = form.get("image");
+      valid =
+        request.method === "POST" &&
+        new URL(request.url).pathname === "/platform/v1/messages/send" &&
+        request.headers.get("authorization") === "Bearer artifact-fixture-key" &&
+        JSON.stringify(JSON.parse(String(form.get("metadata")))) ===
+          JSON.stringify({ ...identity, content: { kind: "image" } }) &&
+        image instanceof File &&
+        image.name === "image.jpg" &&
+        image.type === "image/jpeg" &&
+        Buffer.from(await image.arrayBuffer()).equals(bytes) &&
+        [...form.keys()].length === 2;
+      return Response.json(result);
+    },
+  });
+  try {
+    const output = await runCommand(
+      [wbot, "messages.send", JSON.stringify({ ...identity, imagePath })],
+      directory,
+      {
+        WBOT_PLATFORM_URL: `http://127.0.0.1:${server.port}`,
+        WBOT_API_KEY: "artifact-fixture-key",
+      },
+    );
+    if (
+      !valid ||
+      requests !== 1 ||
+      output.stderr !== "" ||
+      JSON.stringify(JSON.parse(output.stdout)) !== JSON.stringify(result)
+    ) {
+      throw new Error("Installed artifact image multipart smoke test failed.");
+    }
+  } finally {
+    await server.stop(true);
+  }
 }

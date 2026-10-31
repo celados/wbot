@@ -5,6 +5,7 @@ import type {
   MessagesHistoryInput,
   MessagesQueryResult,
   MessageSendInput,
+  ImageMessageSendInput,
   MessageSendResult,
   MessagesQueryInput,
   OutboundSendGetInput,
@@ -28,7 +29,7 @@ export type PlatformClient = {
   queryConversations: (input?: ConversationsQueryInput) => Promise<Page<ConversationResult>>;
   queryMessages: (input: MessagesQueryInput) => Promise<MessagesQueryResult>;
   queryMessageHistory: (input: MessagesHistoryInput) => Promise<Page<MessageResult>>;
-  sendMessage: (input: MessageSendInput) => Promise<MessageSendResult>;
+  sendMessage: (input: MessageSendInput | ImageMessageSendInput) => Promise<MessageSendResult>;
   getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSendResult>;
 };
 
@@ -92,16 +93,16 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
   let reportedDeprecation = false;
   const request = async <Result>(
     path: string,
-    body: object,
+    body: object | FormData,
     schema?: v.GenericSchema<unknown, Result>,
   ) => {
     const response = await platformFetch(new URL(path, baseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.tenantApiKey}`,
-        "Content-Type": "application/json",
+        ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       },
-      body: JSON.stringify(body),
+      body: body instanceof FormData ? body : JSON.stringify(body),
     });
     if (response.ok && !reportedDeprecation) {
       const warning = readDeprecationWarning(response.headers);
@@ -147,7 +148,11 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
         messagesHistoryPageSchema,
       ),
     sendMessage: (input) =>
-      request<MessageSendResult>("/platform/v1/messages/send", input, messageSendResultSchema),
+      request<MessageSendResult>(
+        "/platform/v1/messages/send",
+        encodeSendInput(input),
+        messageSendResultSchema,
+      ),
     getOutboundSend: (input) =>
       request<OutboundSendResult>(
         "/platform/v1/outbound-sends/get",
@@ -228,3 +233,45 @@ const isPlatformErrorCode = (value: unknown): value is PlatformErrorCode =>
     "unsupported_cursor_version",
     "internal_error",
   ].includes(value);
+
+export const MAX_SEND_IMAGE_BYTES = 5 * 1024 * 1024;
+
+const encodeSendInput = (input: MessageSendInput | ImageMessageSendInput): object | FormData => {
+  if (!("content" in input)) return input;
+  if (input.text !== undefined || input.content?.kind !== "image") {
+    throw new Error("Specify exactly one text or image content");
+  }
+  const encoded = input.content.base64;
+  if (
+    typeof encoded !== "string" ||
+    !encoded.length ||
+    encoded.length > 4 * Math.ceil(MAX_SEND_IMAGE_BYTES / 3) ||
+    encoded.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+  ) {
+    throw new Error("Expected bounded JPEG base64 bytes");
+  }
+  const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  if (
+    bytes.length > MAX_SEND_IMAGE_BYTES ||
+    bytes.length < 4 ||
+    bytes[0] !== 255 ||
+    bytes[1] !== 216 ||
+    bytes.at(-2) !== 255 ||
+    bytes.at(-1) !== 217
+  ) {
+    throw new Error("Expected one JPEG image within 5 MiB");
+  }
+  const form = new FormData();
+  form.set(
+    "metadata",
+    JSON.stringify({
+      conversationId: input.conversationId,
+      requestId: input.requestId,
+      requestedBy: input.requestedBy,
+      content: { kind: "image" },
+    }),
+  );
+  form.set("image", new Blob([bytes], { type: "image/jpeg" }), "image.jpg");
+  return form;
+};

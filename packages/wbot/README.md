@@ -1,6 +1,6 @@
 # wbot
 
-`@celados/wbot` lets Agents read authorized WeChat conversations and send text through the CLI.
+`@celados/wbot` lets Agents read authorized WeChat conversations and send text and JPEG images through the CLI.
 Its MCP tools remain read-only. It ships one executable:
 
 - `wbot` — a JSON-only Agent CLI with an `mcp` subcommand for MCP stdio
@@ -50,6 +50,26 @@ Tenant's current `read` and `send` authorization. Sending requires an active `se
 distinguish a quiet conversation from delayed, unavailable, or insufficient capture evidence.
 `captureFreshness` is operational recency evidence, not a guarantee of complete message history.
 
+## Send a JPEG image from the CLI
+
+```sh
+wbot messages.send '{ "conversationId": "conversation-id", "requestId": "image:unique-intent-id", "imagePath": "/absolute/path/photo.jpg", "requestedBy": "agent:example" }'
+```
+
+Supply exactly one of `text` or `imagePath`. Images must be regular JPEG files up to 5 MiB;
+there is no automatic conversion. The CLI reads bounded bytes and submits multipart `metadata`
+and `image` parts. It never sends the local path. The Platform validates full JPEG structure
+and dimensions (at most 16 megapixels and 8192 pixels per side).
+
+Image sending requires a compatible Platform and an Adapter with image sending enabled.
+The initial rollout is on the test Platform: explicitly set
+`WBOT_PLATFORM_URL=https://wbot-api-test.celados.com` with a matching test Tenant key.
+Installing the CLI does not enable the Adapter image switch. The default URL remains production.
+
+Keep the same caller-owned `requestId` only for the same intent and image bytes. The CLI does
+not retry or poll automatically, including after an ambiguous connection failure. Use
+`outbound-sends.get` to inspect a known send ID. MCP and Plugin tools remain read-only.
+
 ## Send text from the CLI
 
 ```sh
@@ -83,7 +103,7 @@ automation must inspect the returned status. Request or contract failures write 
 stderr, leave stdout empty, and exit non-zero.
 
 Sending uses the existing `/platform/v1/messages/send` endpoint; result lookup uses
-`/platform/v1/outbound-sends/get`. Only text sending is supported. These CLI commands are not MCP tools.
+`/platform/v1/outbound-sends/get`. Text and JPEG image sending are supported. These CLI commands are not MCP tools.
 
 ## MCP
 

@@ -1,8 +1,8 @@
 {
   "name": "@celados/wbot",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
-  "description": "Agent-first conversation reading and authorized text sending with read-only MCP tools",
+  "description": "Agent-first conversation reading and authorized text and JPEG sending with read-only MCP tools",
   "license": "MIT",
   "repository": {
     "type": "git",

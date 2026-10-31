@@ -4,6 +4,21 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.4 - 2026-10-31
+
+### Added
+
+- CLI `messages.send` accepts `imagePath` for JPEG files up to 5 MiB, mutually exclusive
+  with `text`, and submits the Platform multipart image contract without exposing local paths.
+- The shared Platform client supports typed image sends. Existing text JSON sends remain compatible.
+- Bounded file reads, invalid-input checks, transport/error tests, and installed artifact image smoke tests.
+
+### Migration
+
+- Image sending requires a compatible Platform and an enabled Adapter image capability.
+  The initial rollout is on the test Platform; CLI installation does not enable that capability.
+- Caller-owned idempotency and no automatic retry/poll remain unchanged. MCP and Plugins stay read-only.
+
 ## 0.2.3 - 2026-10-24
 
 ### Changed

@@ -1,3 +1,6 @@
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -6,6 +9,7 @@ import { afterEach, expect, test } from "vitest";
 
 const cliEntry = new URL("./wbot-cli.ts", import.meta.url).pathname;
 const servers: Server[] = [];
+const directories: string[] = [];
 const input = {
   conversationId: "room-1",
   requestId: "digest:2026-09-21:room-1",
@@ -15,6 +19,9 @@ const input = {
 const queued = { outboundSendId: "send-1", conversationId: "room-1", status: "queued" };
 
 afterEach(async () => {
+  await Promise.all(
+    directories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
   await Promise.all(
     servers.splice(0).map(
       (server) =>
@@ -162,13 +169,30 @@ const createFixture = async (status: number, body: unknown, dropConnection = fal
   const requests: Array<{ method?: string; path?: string; authorization?: string; body: unknown }> =
     [];
   const server = createServer(async (request, response) => {
-    let raw = "";
-    for await (const chunk of request) raw += chunk.toString();
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const raw = Buffer.concat(chunks);
+    const contentType = request.headers["content-type"] ?? "";
+    let requestBody: unknown;
+    if (contentType.startsWith("multipart/form-data; boundary=")) {
+      const form = await new Response(raw, { headers: { "Content-Type": contentType } }).formData();
+      const image = form.get("image") as File;
+      requestBody = {
+        metadata: JSON.parse(String(form.get("metadata"))),
+        image: Array.from(new Uint8Array(await image.arrayBuffer())),
+        imageType: image.type,
+        imageName: image.name,
+        parts: [...form.keys()],
+      };
+    } else {
+      requestBody = JSON.parse(raw.toString());
+    }
+
     requests.push({
       method: request.method,
       path: request.url,
       authorization: request.headers.authorization,
-      body: JSON.parse(raw),
+      body: requestBody,
     });
     if (dropConnection) {
       request.socket.destroy();
@@ -184,3 +208,93 @@ const createFixture = async (status: number, body: unknown, dropConnection = fal
   if (!address || typeof address === "string") throw new Error("Expected TCP fixture address");
   return { url: `http://127.0.0.1:${address.port}`, requests };
 };
+
+const jpeg = Buffer.from([255, 216, 255, 224, 0, 2, 255, 217]); // Transport fixture; Platform validates full image structure.
+const imageFixture = async (bytes = jpeg) => {
+  const directory = await mkdtemp(join(tmpdir(), "wbot-image-"));
+  directories.push(directory);
+  const imagePath = join(directory, "private-local-name.jpg");
+  await writeFile(imagePath, bytes);
+  const { text: _, ...identity } = input;
+  return { directory, args: { ...identity, imagePath } };
+};
+
+test("CLI sends exact JPEG multipart bytes and identity without exposing its local path", async () => {
+  const fixture = await createFixture(200, queued);
+  const image = await imageFixture();
+  const result = await runCli("messages.send", image.args, fixture.url);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual(queued);
+  const { text: _, ...identity } = input;
+  expect(fixture.requests).toEqual([
+    {
+      method: "POST",
+      path: "/platform/v1/messages/send",
+      authorization: "Bearer fixture-secret",
+      body: {
+        metadata: { ...identity, content: { kind: "image" } },
+        image: Array.from(jpeg),
+        imageType: "image/jpeg",
+        imageName: "image.jpg",
+        parts: ["metadata", "image"],
+      },
+    },
+  ]);
+  expect(JSON.stringify(fixture.requests)).not.toContain(image.args.imagePath);
+});
+
+test("image file failures and mutually exclusive inputs never contact Platform", async () => {
+  const fixture = await createFixture(200, queued);
+  const image = await imageFixture();
+  const empty = await imageFixture(Buffer.alloc(0));
+  const oversize = await imageFixture(Buffer.alloc(5 * 1024 * 1024 + 1));
+  const png = await imageFixture(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  for (const args of [
+    { ...image.args, text: "mixed" },
+    { ...image.args, imagePath: image.directory },
+    { ...image.args, imagePath: join(image.directory, "missing.jpg") },
+    empty.args,
+    oversize.args,
+    png.args,
+  ]) {
+    const result = await runCli("messages.send", args, fixture.url);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+  }
+  expect(fixture.requests).toHaveLength(0);
+});
+
+test.each(["drop", "conflict", "malformed"])(
+  "image %s failure never retries or leaks content",
+  async (mode) => {
+    const fixture = await createFixture(
+      mode === "conflict" ? 409 : 200,
+      mode === "conflict"
+        ? { error: { code: "conflict", message: "Conflicting request" } }
+        : { ...queued, status: "delivered", privateDetail: "private-response" },
+      mode === "drop",
+    );
+    const image = await imageFixture();
+    const result = await runCli("messages.send", image.args, fixture.url);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout).toBe("");
+    expect(fixture.requests).toHaveLength(1);
+    expect(result.stderr).not.toContain("fixture-secret");
+    expect(result.stderr).not.toContain("private-response");
+    expect(result.stderr).not.toContain(jpeg.toString("base64"));
+  },
+);
+
+test("a JPEG at the 5 MiB boundary is submitted once", async () => {
+  const bytes = Buffer.alloc(5 * 1024 * 1024);
+  bytes[0] = 255;
+  bytes[1] = 216;
+  bytes[bytes.length - 2] = 255;
+  bytes[bytes.length - 1] = 217;
+  const image = await imageFixture(bytes);
+  const fixture = await createFixture(200, queued);
+  const result = await runCli("messages.send", image.args, fixture.url);
+  expect(result.exitCode, result.stderr).toBe(0);
+  expect(fixture.requests).toHaveLength(1);
+  expect((fixture.requests[0]!.body as { image: number[] }).image).toHaveLength(bytes.length);
+});
