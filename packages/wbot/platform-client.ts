@@ -1,4 +1,7 @@
 import type {
+  WebhookConfigureInput,
+  WebhookIdentityInput,
+  WebhookResult,
   ConversationResult,
   ConversationsQueryInput,
   MessageResult,
@@ -18,6 +21,9 @@ import type * as v from "valibot";
 import { safeParse } from "valibot";
 
 import {
+  webhookResultSchema,
+  webhookListResultSchema,
+  webhookRemoveResultSchema,
   conversationsPageSchema,
   messagesHistoryPageSchema,
   messagesQueryResultSchema,
@@ -32,6 +38,15 @@ export type PlatformClient = {
   sendMessage: (input: MessageSendInput | ImageMessageSendInput) => Promise<MessageSendResult>;
   getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSendResult>;
 };
+
+// Keep PlatformClient's existing structural contract compatible for existing implementations.
+export type WebhookClient = {
+  configureWebhook: (input: WebhookConfigureInput) => Promise<WebhookResult>;
+  listWebhooks: () => Promise<{ items: WebhookResult[] }>;
+  removeWebhook: (input: WebhookIdentityInput) => Promise<{ removed: boolean }>;
+  retryWebhook: (input: WebhookIdentityInput) => Promise<WebhookResult>;
+};
+export type WbotClient = PlatformClient & WebhookClient;
 
 type PlatformClientConfig = {
   baseUrl: string;
@@ -68,7 +83,7 @@ export class PlatformContractError extends Error {
   }
 }
 
-export const createPlatformClientFromEnv = (environment: PlatformEnvironment): PlatformClient => {
+export const createPlatformClientFromEnv = (environment: PlatformEnvironment): WbotClient => {
   const baseUrl = environment.SWITCHBOARD_PLATFORM_URL;
   const tenantApiKey = environment.SWITCHBOARD_TENANT_API_KEY;
   const missing = [
@@ -84,7 +99,7 @@ export const createPlatformClientFromEnv = (environment: PlatformEnvironment): P
   return createPlatformClient({ baseUrl, tenantApiKey });
 };
 
-export const createPlatformClient = (config: PlatformClientConfig): PlatformClient => {
+export const createPlatformClient = (config: PlatformClientConfig): WbotClient => {
   const baseUrl = normalizeBaseUrl(config.baseUrl);
   if (config.tenantApiKey.length === 0) {
     throw new Error("SWITCHBOARD_TENANT_API_KEY must be non-empty");
@@ -133,6 +148,12 @@ export const createPlatformClient = (config: PlatformClientConfig): PlatformClie
   };
 
   return {
+    configureWebhook: (input) =>
+      request("/platform/v1/webhooks/configure", input, webhookResultSchema),
+    listWebhooks: () => request("/platform/v1/webhooks/list", {}, webhookListResultSchema),
+    removeWebhook: (input) =>
+      request("/platform/v1/webhooks/remove", input, webhookRemoveResultSchema),
+    retryWebhook: (input) => request("/platform/v1/webhooks/retry", input, webhookResultSchema),
     queryConversations: (input = {}) =>
       request<Page<ConversationResult>>(
         "/platform/v1/conversations/query",

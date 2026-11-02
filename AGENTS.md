@@ -20,3 +20,5 @@ type: Reference
 - 使用 Bun 与 `package.json` scripts，按改动运行检查与测试；分发、入口或打包变更运行 `bun run verify:package`。
 - 发布前读 [releasing.md](docs/releasing.md)，完成其中的产物与 Platform 兼容性验证。
 - `main` 上修改 `packages/wbot/package.json` 的版本会触发公开 release；仅在发布任务中升级版本，已发布 tag / 产物保持不可变。
+
+Webhook 管理仅进入 CLI；MCP 保持只读。signingSecret 从环境变量读取，成功响应必须按白名单字段投影以避免回显 secret。通知不是消费进度，调用者持久化 messages.updates cursor。

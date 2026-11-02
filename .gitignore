@@ -3,3 +3,6 @@ dist/
 *.tgz
 .DS_Store
 .npmrc
+
+# Local webhook receiver state
+webhook.sqlite*

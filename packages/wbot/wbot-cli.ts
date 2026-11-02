@@ -8,7 +8,7 @@ import { toStandardJsonSchema } from "@valibot/to-json-schema";
 import { c, cli, group } from "@celados/argc";
 import * as v from "valibot";
 
-import type { PlatformClient } from "./platform-client";
+import type { WbotClient } from "./platform-client";
 
 import packageJson from "./package.json" with { type: "json" };
 import { createWbotPlatformClientFromEnvironment, storeWbotApiKey } from "./wbot-config";
@@ -37,7 +37,37 @@ const outboundSendGetInput = v.strictObject({
   outboundSendId: nonEmptyString,
 });
 
+const webhookIdentityInput = v.strictObject({ conversationId: nonEmptyString });
+const webhookConfigureInput = v.strictObject({
+  conversationId: nonEmptyString,
+  url: v.pipe(nonEmptyString, v.maxLength(2048)),
+  signingSecretEnv: v.optional(
+    v.pipe(v.string(), v.regex(/^[A-Za-z_][A-Za-z0-9_]*$/)),
+    "WBOT_WEBHOOK_SIGNING_SECRET",
+  ),
+});
+
 const commands = {
+  webhooks: group(
+    { description: "Manage incoming-message HTTPS wake-up subscriptions" },
+    {
+      configure: c
+        .meta({
+          description:
+            "Configure one conversation webhook; read its signing secret from an environment variable",
+        })
+        .input(schema(webhookConfigureInput)),
+      list: c.meta({ description: "List webhook configuration and latest delivery status" }),
+      remove: c
+        .meta({ description: "Remove a conversation webhook" })
+        .input(schema(webhookIdentityInput)),
+      retry: c
+        .meta({
+          description: "Retry failed or cancelled notification work; does not consume messages",
+        })
+        .input(schema(webhookIdentityInput)),
+    },
+  ),
   auth: group(
     {
       description: "Configure local wbot credentials",
@@ -97,11 +127,45 @@ const app = cli(commands, {
 });
 
 export const runWbotCli = async () => {
-  const callPlatform = async <Result>(operation: (client: PlatformClient) => Promise<Result>) =>
+  const callPlatform = async <Result>(operation: (client: WbotClient) => Promise<Result>) =>
     operation(await createWbotPlatformClientFromEnvironment(process.env));
 
   await app.run({
     handlers: {
+      webhooks: {
+        configure: async (args) => {
+          const { signingSecretEnv, ...input } = args.input;
+          let url: URL;
+          try {
+            url = new URL(input.url);
+          } catch {
+            throw new Error("Webhook URL must be valid HTTPS");
+          }
+          if (
+            url.protocol !== "https:" ||
+            url.username ||
+            url.password ||
+            url.hash ||
+            (url.port && url.port !== "443")
+          ) {
+            throw new Error("Webhook URL must use HTTPS port 443 without credentials or fragments");
+          }
+          const signingSecret = process.env[signingSecretEnv];
+          if (!signingSecret || !/^[A-Za-z0-9_-]{43,128}$/.test(signingSecret)) {
+            throw new Error(
+              "Webhook signing secret environment variable must contain 43–128 base64url characters.",
+            );
+          }
+          return JSON.stringify(
+            await callPlatform((client) => client.configureWebhook({ ...input, signingSecret })),
+          );
+        },
+        list: async () => JSON.stringify(await callPlatform((client) => client.listWebhooks())),
+        remove: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.removeWebhook(args.input))),
+        retry: async (args) =>
+          JSON.stringify(await callPlatform((client) => client.retryWebhook(args.input))),
+      },
       auth: {
         set: async () => {
           const apiKey = await readHiddenApiKey();

@@ -68,3 +68,9 @@ After configuring `integrations/digest/.env.local`, start development from the r
 ```sh
 bun run digest:dev
 ```
+
+## Incoming-message notifications
+
+The CLI can configure signed HTTPS webhooks and consume notifications through `messages.updates`.
+See the [commands](packages/wbot/README.md#incoming-message-webhooks) and
+[durable receiver example](examples/webhook). MCP remains read-only.

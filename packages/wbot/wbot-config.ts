@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import * as v from "valibot";
 
-import type { PlatformClient } from "./platform-client";
+import type { WbotClient } from "./platform-client";
 
 import { createPlatformClient } from "./platform-client";
 
@@ -47,7 +47,7 @@ export const storeWbotApiKey = async (environment: WbotEnvironment, apiKey: stri
 
 export const createWbotPlatformClientFromEnvironment = (
   environment: WbotEnvironment,
-): Promise<PlatformClient> =>
+): Promise<WbotClient> =>
   resolveWbotConfig(environment).then((config) =>
     createPlatformClient({
       baseUrl: config.baseUrl,

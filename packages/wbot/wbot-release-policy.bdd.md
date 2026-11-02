@@ -170,3 +170,9 @@ Given malformed content for a known kind or a missing/empty/non-string kind
 When a page is read
 Then the client still reports a sanitized invalid_platform_response
 And no successful cursor or partial page is emitted.
+
+Scenario: Candidate webhook endpoint compatibility
+Given a candidate release artifact and a Test Tenant API Key
+When the stable release checks the current Platform
+Then webhooks.list must succeed through the installed CLI in addition to the existing read checks
+And mutation contracts are covered by fixtures and isolated receiver integration evidence

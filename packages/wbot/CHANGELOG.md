@@ -4,6 +4,18 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.5 - 2026-11-02
+
+### Added
+
+- CLI `webhooks.configure`, `webhooks.list`, `webhooks.remove`, and `webhooks.retry` for incoming-message HTTPS notifications. Signing secrets are read from an environment variable and are never returned in command results.
+- Typed webhook client methods and validated responses; the existing `PlatformClient` interface remains compatible.
+- A Bun receiver example with HMAC verification, durable wake-ups, cursor recovery, and revision merging. Notifications wake `messages.updates`; they do not contain message bodies or replace cursors.
+
+### Compatibility
+
+- Existing reads, text/JPEG sends and the three read-only MCP tools are unchanged. Webhook configuration requires a current conversation read grant. Retractions and outgoing messages do not trigger notifications.
+
 ## 0.2.4 - 2026-10-31
 
 ### Added

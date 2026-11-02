@@ -131,3 +131,30 @@ Known kinds still require their documented fields; malformed payloads remain con
 No records are dropped, and cursors, pagination flags, and capture freshness are preserved.
 After upgrading from a client that rejected a valid kind, retry the same cursor rather than skipping
 past the offending message. This does not recover source records missing from the Platform.
+
+## Incoming-message webhooks
+
+Version 0.2.5 adds optional HTTPS wake-ups for newly received messages. Configure one webhook per
+read-authorized conversation. Set `WBOT_WEBHOOK_SIGNING_SECRET` to a random 32-byte base64url secret
+through your secret manager; it is distinct from `WBOT_API_KEY`.
+
+```sh
+wbot webhooks.configure '{"conversationId":"conversation-id","url":"https://hooks.your-domain.com/webhook"}'
+wbot webhooks.list
+wbot webhooks.retry '{"conversationId":"conversation-id"}'
+wbot webhooks.remove '{"conversationId":"conversation-id"}'
+```
+
+`signingSecretEnv` optionally names a different environment variable. The CLI never accepts a
+plaintext signing secret argument and does not return it in successful output. HTTPS port 443 and a
+public IPv4 hostname are required. Redirects are not followed. Current limits are 20 subscriptions
+per tenant and 100 per conversation; configuration requires a read grant.
+
+Notifications contain only event/conversation identity and timing, not message content. Verify the
+signature, durably accept/deduplicate the event, then call `messages.updates` from your saved cursor
+until `hasMore=false`. Only incoming new messages notify; outgoing messages and retractions remain
+queryable. A successful callback does not mean the consumer processed its messages.
+
+See the [Bun receiver and setup/recovery guide](https://github.com/celados/wbot/tree/v0.2.5/examples/webhook)
+for HMAC verification, durable cursor handling, retry limits and setup-gap recovery. MCP and both
+plugins continue to expose only their existing three read tools.

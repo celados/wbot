@@ -184,3 +184,14 @@ export const outboundSendResultSchema = v.looseObject({
   status: v.picklist(["queued", "processing", "accepted", "failed", "indeterminate"]),
   reflectedMessageId: nullableString,
 });
+
+export const webhookResultSchema = v.object({
+  conversationId: v.pipe(v.string(), v.minLength(1)),
+  url: v.string(),
+  deliveryStatus: v.picklist(["idle", "pending", "sending", "failed", "cancelled"]),
+  attempts: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  lastError: v.nullable(v.string()),
+  lastDeliveredAtMs: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0))),
+});
+export const webhookListResultSchema = v.object({ items: v.array(webhookResultSchema) });
+export const webhookRemoveResultSchema = v.object({ removed: v.boolean() });

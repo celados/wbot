@@ -176,3 +176,14 @@ export type PlatformErrorCode =
   | "invalid_cursor"
   | "unsupported_cursor_version"
   | "internal_error";
+
+export type WebhookConfigureInput = { conversationId: string; url: string; signingSecret: string };
+export type WebhookIdentityInput = { conversationId: string };
+export type WebhookResult = {
+  conversationId: string;
+  url: string;
+  deliveryStatus: "idle" | "pending" | "sending" | "failed" | "cancelled";
+  attempts: number;
+  lastError: string | null;
+  lastDeliveredAtMs: number | null;
+};

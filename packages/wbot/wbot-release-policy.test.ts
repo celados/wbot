@@ -539,6 +539,7 @@ describe("功能 6：稳定发布具有当前后端兼容证据", () => {
     expect(compatibility.exitCode, compatibility.stderr).toBe(0);
     expect(compatibility.stdout).toContain("against the current test Platform contract");
     expect(platform.paths).toEqual([
+      "/platform/v1/webhooks/list",
       "/platform/v1/conversations/query",
       "/platform/v1/messages/history",
       "/platform/v1/messages/query",

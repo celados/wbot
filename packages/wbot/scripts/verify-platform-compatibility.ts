@@ -23,6 +23,12 @@ try {
     environment,
     [apiKey],
   );
+  await runCommand(
+    [join(globalBinDirectory, "wbot"), "webhooks.list"],
+    temporaryRoot,
+    environment,
+    [apiKey],
+  );
   const conversationsResult = await runCommand(
     [join(globalBinDirectory, "wbot"), "conversations.list", '{ "limit": 1 }'],
     temporaryRoot,
