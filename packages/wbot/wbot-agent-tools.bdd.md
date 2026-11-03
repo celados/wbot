@@ -270,3 +270,25 @@ And Agent 为三个入口提供相同读取输入
 When Agent 分别执行对应能力
 Then 三个入口返回语义等价的结构化结果
 And 授权、分页、游标和错误语义不因入口不同而改变
+
+## 功能 8：CLI 与 MCP 共享 429 限流处理
+
+CLI 与 MCP 共用 `platform-client.ts`，限流重试只在这里实现一次（[测试](wbot-rate-limit.test.ts)）。
+
+**场景 8.1：收到 429 后按 Retry-After 等待并重试一次**
+Given Platform 对一次请求返回 429 与 `Retry-After`
+When CLI 或 MCP 发起该请求
+Then client 等待指示的秒数（缺少头时用正文 `retryAfterMs`，单次最多 60 秒）后重试同一请求一次
+And 重试成功时入口正常返回结构化结果
+
+**场景 8.2：重试后仍为 429 时报告 typed 错误**
+Given Platform 对请求及其重试都返回 429
+When CLI 或 MCP 发起该请求
+Then client 抛出 `code: "rate_limited"` 且带 `retryAfterMs` 的 PlatformRequestError
+And CLI 写 stderr 并以非零退出，MCP 返回 `isError`
+And 不发起第三次请求
+
+**场景 8.3：非 429 错误不重试**
+Given Platform 返回其他稳定错误
+When client 发起请求
+Then 立即抛出对应 typed 错误

@@ -53,19 +53,32 @@ type PlatformClientConfig = {
   tenantApiKey: string;
   fetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
   onDeprecationWarning?: (warning: string) => void;
+  /** Injectable delay used before the single 429 retry; defaults to setTimeout. */
+  sleep?: (ms: number) => Promise<void>;
 };
+
+/** Upper bound on one honoured Retry-After wait so a bad header cannot hang a caller. */
+export const maxRateLimitRetryWaitMs = 60_000;
 
 type PlatformEnvironment = Record<string, string | undefined>;
 
 export class PlatformRequestError extends Error {
   readonly status: number;
   readonly code: PlatformErrorCode;
+  /** Present on `rate_limited`: how long the Platform asked the caller to wait. */
+  readonly retryAfterMs: number | null;
 
-  constructor(message: string, status: number, code: PlatformErrorCode) {
+  constructor(
+    message: string,
+    status: number,
+    code: PlatformErrorCode,
+    retryAfterMs: number | null = null,
+  ) {
     super(message);
     this.name = "PlatformRequestError";
     this.status = status;
     this.code = code;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -105,13 +118,11 @@ export const createPlatformClient = (config: PlatformClientConfig): WbotClient =
     throw new Error("SWITCHBOARD_TENANT_API_KEY must be non-empty");
   }
   const platformFetch = config.fetch ?? fetch;
+  const sleep =
+    config.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let reportedDeprecation = false;
-  const request = async <Result>(
-    path: string,
-    body: object | FormData,
-    schema?: v.GenericSchema<unknown, Result>,
-  ) => {
-    const response = await platformFetch(new URL(path, baseUrl), {
+  const send = (path: string, body: object | FormData) =>
+    platformFetch(new URL(path, baseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.tenantApiKey}`,
@@ -119,6 +130,19 @@ export const createPlatformClient = (config: PlatformClientConfig): WbotClient =
       },
       body: body instanceof FormData ? body : JSON.stringify(body),
     });
+  const request = async <Result>(
+    path: string,
+    body: object | FormData,
+    schema?: v.GenericSchema<unknown, Result>,
+  ) => {
+    let response = await send(path, body);
+    if (response.status === 429) {
+      // A 429 is rejected before any work, so one retry of the same request is safe,
+      // including sends that carry the same caller-owned requestId.
+      const payload = await response.json().catch(() => null);
+      await sleep(rateLimitWaitMs(response, payload));
+      response = await send(path, body);
+    }
     if (response.ok && !reportedDeprecation) {
       const warning = readDeprecationWarning(response.headers);
       if (warning) {
@@ -129,6 +153,15 @@ export const createPlatformClient = (config: PlatformClientConfig): WbotClient =
     const payload = await readResponseBody(response, path);
     if (!response.ok) {
       const error = readError(payload);
+      if (response.status === 429) {
+        const retryAfterMs = rateLimitWaitMs(response, payload, Number.POSITIVE_INFINITY);
+        throw new PlatformRequestError(
+          `${error?.message ?? "Platform rate limit exceeded"} (rate_limited; retry after ${Math.ceil(retryAfterMs / 1000)}s)`,
+          429,
+          "rate_limited",
+          retryAfterMs,
+        );
+      }
       throw new PlatformRequestError(
         error?.message ?? `Platform request failed (${response.status})`,
         response.status,
@@ -222,6 +255,25 @@ const readResponseBody = async (response: Response, endpoint: string): Promise<u
   }
 };
 
+const rateLimitWaitMs = (
+  response: Response,
+  payload: unknown,
+  maxWaitMs: number = maxRateLimitRetryWaitMs,
+) => {
+  const header = Number(response.headers.get("Retry-After") ?? Number.NaN);
+  const fromHeader = Number.isFinite(header) && header > 0 ? header * 1000 : null;
+  const fromBody = readRetryAfterMs(payload);
+  return Math.min(fromHeader ?? fromBody ?? 1000, maxWaitMs);
+};
+
+const readRetryAfterMs = (payload: unknown): number | null => {
+  if (typeof payload !== "object" || payload === null || !("error" in payload)) return null;
+  const error = payload.error;
+  if (typeof error !== "object" || error === null || !("retryAfterMs" in error)) return null;
+  const value = error.retryAfterMs;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+};
+
 const readError = (payload: unknown): { code: PlatformErrorCode; message: string } | null => {
   if (typeof payload !== "object" || payload === null || !("error" in payload)) {
     return null;
@@ -252,6 +304,7 @@ const isPlatformErrorCode = (value: unknown): value is PlatformErrorCode =>
     "conflict",
     "invalid_cursor",
     "unsupported_cursor_version",
+    "rate_limited",
     "internal_error",
   ].includes(value);
 

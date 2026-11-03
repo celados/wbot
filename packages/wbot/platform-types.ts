@@ -175,6 +175,7 @@ export type PlatformErrorCode =
   | "conflict"
   | "invalid_cursor"
   | "unsupported_cursor_version"
+  | "rate_limited"
   | "internal_error";
 
 export type WebhookConfigureInput = { conversationId: string; url: string; signingSecret: string };

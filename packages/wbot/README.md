@@ -50,6 +50,39 @@ Tenant's current `read` and `send` authorization. Sending requires an active `se
 distinguish a quiet conversation from delayed, unavailable, or insufficient capture evidence.
 `captureFreshness` is operational recency evidence, not a guarantee of complete message history.
 
+## Rate limits and polling
+
+The Platform rate-limits `/platform/v1/*` per API key, per minute:
+
+| Operation                                                         | CLI / MCP                                                                            | Limit per key |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------- |
+| List (`conversations/query`)                                      | `conversations.list`, `list_conversations`                                           | 30/min        |
+| Read (`messages/query`, `messages/history`, `outbound-sends/get`) | `messages.updates`, `messages.history`, `outbound-sends.get`, and the MCP read tools | 300/min       |
+| Send (`messages/send`)                                            | `messages.send`                                                                      | 60/min        |
+
+A Tenant also has an aggregate budget of three times the per-key limit, which only takes effect
+when the Tenant has more than three active keys.
+
+An over-limit request returns HTTP 429 with a `Retry-After` header (seconds) and the body
+`{ "error": { "code": "rate_limited", "message": "...", "retryAfterMs": 1500 } }`. A 429 is
+rejected before any work happens. The CLI and MCP client wait for `Retry-After` (falling back to
+`retryAfterMs`, at most 60 seconds) and retry the same request once; this is the only automatic
+retry, and a retried send keeps its `requestId` and body. If the retry is also limited, the command
+fails with a `rate_limited` error that reports how long to wait; stdout stays empty and the exit
+code is non-zero (MCP returns a tool error). The typed `PlatformRequestError` exposes
+`code: "rate_limited"` and `retryAfterMs`.
+
+Polling guidance:
+
+- Read new messages incrementally with `messages.updates` and the saved cursor, or configure
+  [webhooks](#incoming-message-webhooks) and read updates only when notified.
+- Do not loop over `conversations.list` to detect new messages; list conversations to discover
+  them, then follow each conversation's updates cursor.
+- `messages.history` is for looking back at older context, not for polling.
+
+`captureFreshness.asOfMs` is rounded to the minute so read results stay cacheable; do not compare
+it at sub-minute precision.
+
 ## Send a JPEG image from the CLI
 
 ```sh
