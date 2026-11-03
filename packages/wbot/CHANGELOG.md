@@ -4,6 +4,29 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.6 - 2026-11-03
+
+### Added
+
+- The shared Platform client recognizes the `rate_limited` error code. On HTTP 429 it waits for
+  `Retry-After` (falling back to the body `retryAfterMs`, at most 60 seconds) and retries the same
+  request once; a second 429 raises `PlatformRequestError` with `code: "rate_limited"` and
+  `retryAfterMs`. CLI and MCP both use this path. Other errors are still not retried.
+- README documents the Platform rate limits: per key, list (`conversations.list`) 30/min, reads
+  (`messages.updates`, `messages.history`, `outbound-sends.get`) 300/min, sends 60/min; the Tenant
+  aggregate is three times the per-key limit and applies when a Tenant has more than three active keys.
+
+### Changed
+
+- 429 responses were previously reported as `internal_error` without retry.
+
+### Migration
+
+- Poll incrementally with `messages.updates` and the saved cursor, or use webhooks. Do not loop over
+  `conversations.list`; `messages.history` is for looking back, not polling.
+- `captureFreshness.asOfMs` is now rounded to the minute by the Platform; do not rely on
+  sub-minute precision.
+
 ## 0.2.5 - 2026-11-02
 
 ### Added
