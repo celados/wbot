@@ -80,8 +80,10 @@ Polling guidance:
   them, then follow each conversation's updates cursor.
 - `messages.history` is for looking back at older context, not for polling.
 
-`captureFreshness.asOfMs` is rounded to the minute so read results stay cacheable; do not compare
-it at sub-minute precision.
+`captureFreshness` is maintained by the Platform so read results stay cacheable: `status` is
+authoritative, and `asOfMs` is a lower bound on the last successful capture scan. It is exact when
+the status changes and otherwise refreshed at most every 10 minutes, so do not compute freshness
+yourself from `asOfMs`.
 
 ## Send a JPEG image from the CLI
 

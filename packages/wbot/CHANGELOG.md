@@ -24,8 +24,9 @@ All notable changes to the public wbot client are documented in this file.
 
 - Poll incrementally with `messages.updates` and the saved cursor, or use webhooks. Do not loop over
   `conversations.list`; `messages.history` is for looking back, not polling.
-- `captureFreshness.asOfMs` is now rounded to the minute by the Platform; do not rely on
-  sub-minute precision.
+- `captureFreshness.status` is authoritative; `asOfMs` is a lower bound on the last successful
+  scan (exact at status changes, otherwise refreshed at most every 10 minutes). Do not derive
+  freshness from `asOfMs` yourself.
 
 ## 0.2.5 - 2026-11-02
 
