@@ -21,12 +21,12 @@
     },
     "packages/wbot": {
       "name": "@celados/wbot",
-      "version": "0.2.3",
+      "version": "0.2.7",
       "bin": {
         "wbot": "./dist/wbot.js",
       },
       "devDependencies": {
-        "@celados/argc": "^7.11.3",
+        "@celados/argc": "^7.12.0",
         "@modelcontextprotocol/sdk": "1.30.0",
         "@valibot/to-json-schema": "1.7.1",
         "valibot": "1.4.2",
@@ -35,7 +35,7 @@
     },
   },
   "packages": {
-    "@celados/argc": ["@celados/argc@7.11.3", "https://npm.celados.com/@celados/argc/-/@celados/argc-7.11.3.tgz", { "dependencies": { "oxc-parser": "0.137.0", "yaml": "2.9.0" }, "peerDependencies": { "@standard-schema/spec": "^1.0.0" } }, "sha512-ZA9mOj6VumqIymQefvnu8thSfGyTsGBLif1Wg5mE6SKI1uYNmtys2wXtPU9GKZk0kw8ioRK5Sx15Z865HaZ5mA=="],
+    "@celados/argc": ["@celados/argc@7.12.0", "https://npm.celados.com/@celados/argc/-/@celados/argc-7.12.0.tgz", { "dependencies": { "oxc-parser": "0.137.0", "yaml": "2.9.0" }, "peerDependencies": { "@standard-schema/spec": "^1.0.0" } }, "sha512-b/XPzeRzOdtc5Lmn5JHZ7H1IbNrbDBdyLwCQ53Cko/BRKL1AYlfxV22MSirIMKD62wjPctpwETnp6RJHMERwCQ=="],
 
     "@celados/wbot": ["@celados/wbot@workspace:packages/wbot"],
 

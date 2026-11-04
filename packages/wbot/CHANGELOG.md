@@ -4,6 +4,15 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.7 - 2026-11-04
+
+### Changed
+
+- Update the CLI framework to `@celados/argc` 7.12.0. When an agent captures stdout through a pipe or
+  `$(…)`, `wbot @skill`, `wbot @schema` and bare help are refused with `error: OUTPUT_CAPTURED` and a
+  runnable rewrite (run alone, or redirect to a file). Command output and the Public Contract are
+  otherwise unchanged; no wbot command is marked whole-output.
+
 ## 0.2.6 - 2026-11-03
 
 ### Added

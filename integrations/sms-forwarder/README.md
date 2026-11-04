@@ -43,13 +43,13 @@ USB 和 Mac 不参与运行。前台服务每 15 秒补查；0.4.0 起短信广�
 
 取得 outboundSendId 后持久化，之后只调用 `/platform/v1/outbound-sends/get`：
 
-| 平台结果 | 手机行为 |
-| --- | --- |
-| queued / processing | 保留记录，继续查询 |
-| accepted | 删除本地正文；只表示微信发送路径已接受，不是送达或已读回执 |
-| failed | 留存异常，不自动重新提交 |
-| indeterminate | 留存异常，不自动重发 |
-| 权限失败或协议异常 | 标记 blocked，停止该条自动处理 |
+| 平台结果            | 手机行为                                                   |
+| ------------------- | ---------------------------------------------------------- |
+| queued / processing | 保留记录，继续查询                                         |
+| accepted            | 删除本地正文；只表示微信发送路径已接受，不是送达或已读回执 |
+| failed              | 留存异常，不自动重新提交                                   |
+| indeterminate       | 留存异常，不自动重发                                       |
+| 权限失败或协议异常  | 标记 blocked，停止该条自动处理                             |
 
 手机在提交成功但尚未保存结果时退出，恢复后仍使用原 requestId，平台幂等吸收重复请求。
 API Key 属于一个 Tenant，幂等也是 Tenant 范围，因此队列未清空时禁止更换凭据。
@@ -118,7 +118,6 @@ Android 的开机前台服务例外及限制见
 尚未收到用户提供的“息屏转发测试”真实 SMS，完整息屏 SMS → 微信链路与自然 Deep Doze 待验收。
 白名单允许部分 CPU/网络能力，其他休眠限制仍可能适用，见
 [Android Doze 文档](https://developer.android.com/training/monitoring-device-state/doze-standby)。
-
 
 ## 0.5.0 分卡路由
 
