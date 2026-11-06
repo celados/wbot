@@ -4,6 +4,13 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.8 - 2026-11-06
+
+### Changed
+
+- Update the CLI framework to `@celados/argc` 8.0.0, which removes the `@run` builtin and `--json`.
+  wbot never used either: commands, `@schema` output and the Public Contract are unchanged.
+
 ## 0.2.7 - 2026-11-04
 
 ### Changed
