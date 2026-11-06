@@ -12,7 +12,11 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import type { PlatformClient } from "./platform-client";
 
-import { DEFAULT_WBOT_PLATFORM_URL, resolveWbotConfig } from "./wbot-config";
+import {
+  DEFAULT_WBOT_PLATFORM_URL,
+  TEST_WBOT_PLATFORM_URL,
+  resolveWbotPlatformUrl,
+} from "./wbot-config";
 import { createWbotMcpServer } from "./wbot-mcp";
 
 type PluginMcpConfig = {
@@ -76,14 +80,50 @@ describe("功能 2：CLI 与 MCP 复用安全的本机凭据", () => {
   test("场景 2.4：环境变量 API Key 覆盖本地凭据", async () => {
     const configRoot = await createTemporaryDirectory();
     await writeCredentials(configRoot, "file-secret");
+    const platform = await createRecordingPlatformServer();
 
-    const config = await resolveWbotConfig({
+    const result = await runCli(["conversations.list"], {
       WBOT_API_KEY: "environment-secret",
+      WBOT_PLATFORM_URL: platform.url,
       XDG_CONFIG_HOME: configRoot,
     });
 
-    expect(config.apiKey).toBe("environment-secret");
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(platform.authorizations).toEqual(["Bearer environment-secret"]);
     expect(await readCredentials(configRoot)).toContain("file-secret");
+  });
+
+  test("场景 2.8：未设置环境变量时使用 wbot auth set 保存的凭据", async () => {
+    const configRoot = await createTemporaryDirectory();
+    await writeCredentials(configRoot, "file-secret");
+    const platform = await createRecordingPlatformServer();
+
+    const result = await runCli(["conversations.list"], {
+      WBOT_PLATFORM_URL: platform.url,
+      XDG_CONFIG_HOME: configRoot,
+    });
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(platform.authorizations).toEqual(["Bearer file-secret"]);
+  });
+
+  test("场景 2.9：团队 vault 中的测试 key 只在目标为测试服务时参与解析", async () => {
+    const configRoot = await createTemporaryDirectory();
+    // NODE_ENV=test keeps the latch source from ever running the real vault.
+    const environment = { XDG_CONFIG_HOME: configRoot, NODE_ENV: "test" };
+
+    const production = await runCli(["conversations.list"], environment);
+    const testPlatform = await runCli(["conversations.list"], {
+      ...environment,
+      WBOT_PLATFORM_URL: TEST_WBOT_PLATFORM_URL,
+    });
+
+    expect(production.stderr).toContain("value_unavailable");
+    expect(production.stderr).toContain("not_test_platform");
+    expect(production.stderr).not.toContain("disabled_in_test");
+    expect(testPlatform.stderr).toContain("value_unavailable");
+    expect(testPlatform.stderr).toContain("disabled_in_test");
+    expect(testPlatform.stderr).not.toContain("not_test_platform");
   });
 
   test("场景 2.5：缺少凭据时 CLI 在网络请求前失败", async () => {
@@ -95,7 +135,8 @@ describe("功能 2：CLI 与 MCP 复用安全的本机凭据", () => {
 
     expect(result.exitCode).not.toBe(0);
     expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("RUNTIME_ERROR");
+    expect(result.stderr).toContain("DOMAIN_ERROR");
+    expect(result.stderr).toContain("value_unavailable");
     expect(result.stderr).toContain("wbot auth set");
     expect(result.stderr).toContain("WBOT_API_KEY");
   });
@@ -115,15 +156,11 @@ describe("功能 2：CLI 与 MCP 复用安全的本机凭据", () => {
     expect(result.stderr).not.toContain(damagedSecret);
   });
 
-  test("场景 2.7：默认使用生产 endpoint，并允许显式覆盖", async () => {
-    const defaultConfig = await resolveWbotConfig({ WBOT_API_KEY: "secret" });
-    const overriddenConfig = await resolveWbotConfig({
-      WBOT_API_KEY: "secret",
-      WBOT_PLATFORM_URL: "http://localhost:8787",
-    });
-
-    expect(defaultConfig.baseUrl).toBe(DEFAULT_WBOT_PLATFORM_URL);
-    expect(overriddenConfig.baseUrl).toBe("http://localhost:8787");
+  test("场景 2.7：默认使用生产 endpoint，并允许显式覆盖", () => {
+    expect(resolveWbotPlatformUrl({})).toBe(DEFAULT_WBOT_PLATFORM_URL);
+    expect(resolveWbotPlatformUrl({ WBOT_PLATFORM_URL: "http://localhost:8787" })).toBe(
+      "http://localhost:8787",
+    );
   });
 
   test("场景 2.3：非交互 auth set 立即失败并指引环境变量", async () => {
@@ -374,6 +411,26 @@ const createTemporaryDirectory = async () => {
   temporaryDirectories.push(path);
   return path;
 };
+
+const createRecordingPlatformServer = () =>
+  new Promise<{ url: string; authorizations: Array<string | undefined> }>((resolve, reject) => {
+    const authorizations: Array<string | undefined> = [];
+    const server = createServer((request, response) => {
+      authorizations.push(request.headers.authorization);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify({ items: [], nextCursor: "next", hasMore: false }));
+    });
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        reject(new Error("Test server did not expose a TCP address"));
+        return;
+      }
+      servers.push(server);
+      resolve({ url: `http://127.0.0.1:${address.port}`, authorizations });
+    });
+  });
 
 const credentialsPath = (configRoot: string) => join(configRoot, "wbot", "credentials.json");
 

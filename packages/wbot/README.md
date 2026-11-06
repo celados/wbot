@@ -18,6 +18,8 @@ wbot auth set
 
 `wbot auth set` reads the key without echoing it and stores it at `$XDG_CONFIG_HOME/wbot/credentials.json`, or `~/.config/wbot/credentials.json` when `XDG_CONFIG_HOME` is unset. For automation, set `WBOT_API_KEY`; it overrides the stored credential. `WBOT_PLATFORM_URL` is an optional development or self-hosted endpoint override.
 
+The API key is resolved lazily, only by commands that call the Platform (`@schema`, `--help` and `auth set` never read it), from the first source that has one: `WBOT_API_KEY`, then the key saved by `wbot auth set`, then — only when `WBOT_PLATFORM_URL` is `https://wbot-api-test.celados.com` — the team's test Tenant key through [latch](https://github.com/celados/latch). `wbot @schema` lists these sources under `values:`. When none has a key, the command fails before any network request with `error: DOMAIN_ERROR`, `code: value_unavailable`, and one `tried:` entry per source with its reason and next step.
+
 The default public API is `https://wbot-api-prod.celados.com`. Internal dogfood API keys created by the test deployment require `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com`. This reuses `WBOT_API_KEY`, the local credentials file, and the same CLI and MCP schemas; there is no test-specific executable.
 
 The `wbot-cloud-prod.celados.com` and `wbot-cloud-test.celados.com` origins belong to Convex browser clients; they are not valid `WBOT_PLATFORM_URL` values.

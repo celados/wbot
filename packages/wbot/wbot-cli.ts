@@ -11,8 +11,9 @@ import * as v from "valibot";
 import type { WbotClient } from "./platform-client";
 
 import packageJson from "./package.json" with { type: "json" };
-import { createWbotPlatformClientFromEnvironment, storeWbotApiKey } from "./wbot-config";
+import { storeWbotApiKey } from "./wbot-config";
 import { runWbotMcpServer } from "./wbot-mcp";
+import { createWbotPlatformClient, wbotValues } from "./wbot-values";
 
 const schema = toStandardJsonSchema;
 const nonEmptyString = v.pipe(v.string(), v.minLength(1));
@@ -124,11 +125,12 @@ const app = cli(commands, {
   name: "wbot",
   version: packageJson.version,
   description: "Read WeChat conversations and send authorized text or JPEG images through wbot",
+  values: wbotValues,
 });
 
 export const runWbotCli = async () => {
   const callPlatform = async <Result>(operation: (client: WbotClient) => Promise<Result>) =>
-    operation(await createWbotPlatformClientFromEnvironment(process.env));
+    operation(await createWbotPlatformClient());
 
   await app.run({
     handlers: {
@@ -201,7 +203,7 @@ export const runWbotCli = async () => {
         get: async (args) =>
           JSON.stringify(await callPlatform((client) => client.getOutboundSend(args.input))),
       },
-      mcp: runWbotMcpServer,
+      mcp: () => runWbotMcpServer(createWbotPlatformClient),
     },
   });
 };

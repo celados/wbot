@@ -4,6 +4,19 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.2.9 - 2026-11-06
+
+### Changed
+
+- Update the CLI framework to `@celados/argc` 8.1.0. CLI and MCP resolve the API key through one
+  declared value source, lazily and only for commands that call the Platform: `WBOT_API_KEY`, then the
+  key saved by `wbot auth set`, then (only when `WBOT_PLATFORM_URL` is the test origin) the team test
+  Tenant key through latch. `wbot @schema` and `--help` list the sources under `values:`.
+- A missing API key now fails with `error: DOMAIN_ERROR`, `code: value_unavailable` and a `tried:` list
+  (one entry per source, with reason and hint) instead of a `RUNTIME_ERROR` sentence. MCP tool errors
+  carry the same structured envelope. A damaged credentials file is reported as `invalid_credentials`
+  without echoing its content.
+
 ## 0.2.8 - 2026-11-06
 
 ### Changed

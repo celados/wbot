@@ -1,6 +1,6 @@
 {
   "name": "@celados/wbot",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": true,
   "description": "Agent-first conversation reading and authorized text and JPEG sending with read-only MCP tools",
   "license": "MIT",
@@ -23,7 +23,8 @@
     "build": "bun build ./wbot-cli.ts --target=bun --outfile=dist/wbot.js"
   },
   "devDependencies": {
-    "@celados/argc": "^8.0.0",
+    "@celados/argc": "^8.1.0",
+    "@celados/latch-source": "^0.1.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@valibot/to-json-schema": "1.7.1",
     "valibot": "1.4.2",

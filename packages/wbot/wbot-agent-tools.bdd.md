@@ -98,7 +98,7 @@ And 本地凭据文件保持不变
 **场景 2.5：缺少凭据时在网络请求前失败**
 Given 环境变量和本地凭据文件都没有可用 API Key
 When Agent 通过 CLI 或 MCP 发起读取
-Then 动作在发出网络请求前失败
+Then 动作在发出网络请求前失败，错误为 `value_unavailable`，逐个列出尝试过的来源
 And 错误指引用户运行 `wbot auth set` 或配置 `WBOT_API_KEY`
 And 错误不伪装成空会话列表
 
@@ -109,6 +109,19 @@ When Agent 通过 CLI 或 MCP 发起读取
 Then 动作在发出网络请求前失败
 And 错误指引用户重新运行 `wbot auth set`
 And 错误不把文件内容输出给 Agent
+
+**场景 2.8：未设置环境变量时复用 `wbot auth set` 保存的凭据**
+Given 本地凭据文件已经保存一把 API Key
+And 当前进程没有提供 `WBOT_API_KEY`
+When Agent 通过 CLI 或 MCP 发起读取
+Then 本次调用使用本地凭据文件中的 API Key
+
+**场景 2.9：团队测试 key 不会流向生产调用**
+Given 环境变量和本地凭据文件都没有可用 API Key
+When Agent 以默认生产 endpoint 发起读取
+Then 团队 vault 中的测试 Tenant key 不参与解析，动作失败
+When 内部成员以 `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com` 发起读取
+Then CLI 通过 latch 读取团队测试 Tenant key，无需渲染 `.env` 或保存本地凭据
 
 **场景 2.7：普通用户不需要配置 Platform URL**
 Given 用户使用公开发布的 wbot 工具

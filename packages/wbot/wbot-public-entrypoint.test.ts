@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { DEFAULT_WBOT_PLATFORM_URL, resolveWbotConfig } from "./wbot-config";
+import { DEFAULT_WBOT_PLATFORM_URL, resolveWbotPlatformUrl } from "./wbot-config";
 
 const packageRoot = new URL(".", import.meta.url).pathname;
 const cliEntry = join(packageRoot, "wbot-cli.ts");
@@ -60,6 +60,18 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
     expect(result.stdout).not.toMatch(/operator/i);
   });
 
+  test("场景 1.4：@schema 列出 API key 的来源，但不读取它们", async () => {
+    const result = await runCli(["@schema"]);
+
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/values:[\s\S]*WBOT_API_KEY/);
+    expect(result.stdout).toContain("env WBOT_API_KEY");
+    expect(result.stdout).toContain("wbot auth set");
+    expect(result.stdout).toContain(
+      "only when WBOT_PLATFORM_URL=https://wbot-api-test.celados.com",
+    );
+  });
+
   test("场景 1.3：MCP host 通过 wbot mcp 启动服务", async () => {
     const fixture = await createStdioMcpFixture();
 
@@ -76,10 +88,8 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
 });
 
 describe("功能 2：环境选择不扩张公开命令面", () => {
-  test("场景 2.1：默认连接生产服务", async () => {
-    const config = await resolveWbotConfig(createFixture().environment);
-
-    expect(config.baseUrl).toBe(DEFAULT_WBOT_PLATFORM_URL);
+  test("场景 2.1：默认连接生产服务", () => {
+    expect(resolveWbotPlatformUrl(createFixture().environment)).toBe(DEFAULT_WBOT_PLATFORM_URL);
   });
 
   test("场景 2.2：内部 dogfood 显式连接测试服务", async () => {

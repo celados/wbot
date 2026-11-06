@@ -21,12 +21,13 @@
     },
     "packages/wbot": {
       "name": "@celados/wbot",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "bin": {
         "wbot": "./dist/wbot.js",
       },
       "devDependencies": {
-        "@celados/argc": "^8.0.0",
+        "@celados/argc": "^8.1.0",
+        "@celados/latch-source": "^0.1.0",
         "@modelcontextprotocol/sdk": "1.30.0",
         "@valibot/to-json-schema": "1.7.1",
         "valibot": "1.4.2",
@@ -35,7 +36,9 @@
     },
   },
   "packages": {
-    "@celados/argc": ["@celados/argc@8.0.0", "https://npm.celados.com/@celados/argc/-/@celados/argc-8.0.0.tgz", { "dependencies": { "yaml": "2.9.0" }, "peerDependencies": { "@standard-schema/spec": "^1.0.0" } }, "sha512-xVY1Dqta6Z5Fhx2QpDC4udfkC6903YOniosf0clmd034+Cvn56G968RIElW6n7BXw/oVTBBZTT+HnQInxImRtw=="],
+    "@celados/argc": ["@celados/argc@8.1.0", "https://npm.celados.com/@celados/argc/-/@celados/argc-8.1.0.tgz", { "dependencies": { "yaml": "2.9.0" }, "peerDependencies": { "@standard-schema/spec": "^1.0.0" } }, "sha512-tosY2BJY2orphzJKfb9LguW0vradVfKFv+G8lbDK03RBovLJdQYCZ5mPc2BulKp2+6jjQh/2CN1CqFdWxV3x1g=="],
+
+    "@celados/latch-source": ["@celados/latch-source@0.1.0", "https://npm.celados.com/@celados/latch-source/-/@celados/latch-source-0.1.0.tgz", { "peerDependencies": { "@celados/argc": ">=8.1.0" } }, "sha512-RjPJV+DdgouKKr/DIMHIa/WMx62kzWezfbrnQgVQcbseSoZAb4cFV1LIgmKhzg1TflO6G5RHDtBk3mHzDUBqyQ=="],
 
     "@celados/wbot": ["@celados/wbot@workspace:packages/wbot"],
 

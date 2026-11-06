@@ -5,7 +5,6 @@ import { z } from "zod";
 import type { PlatformClient } from "./platform-client";
 
 import packageJson from "./package.json" with { type: "json" };
-import { createWbotPlatformClientFromEnvironment } from "./wbot-config";
 
 type PlatformClientSource = PlatformClient | (() => PlatformClient | Promise<PlatformClient>);
 
@@ -63,8 +62,8 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
   return server;
 };
 
-export const runWbotMcpServer = async () => {
-  const server = createWbotMcpServer(() => createWbotPlatformClientFromEnvironment(process.env));
+export const runWbotMcpServer = async (clientSource: PlatformClientSource) => {
+  const server = createWbotMcpServer(clientSource);
   await server.connect(new StdioServerTransport());
 };
 
@@ -85,9 +84,18 @@ const callTool = async <Result>(
       content: [
         {
           type: "text" as const,
-          text: error instanceof Error ? error.message : "wbot request failed",
+          text: describeToolError(error),
         },
       ],
     };
   }
+};
+
+// argc domain errors (e.g. `value_unavailable` for a missing API key) carry
+// their structured cause in `envelope`; their message alone is "DOMAIN_ERROR".
+const describeToolError = (error: unknown) => {
+  if (typeof error === "object" && error !== null && "envelope" in error) {
+    return JSON.stringify(error.envelope, null, 2);
+  }
+  return error instanceof Error ? error.message : "wbot request failed";
 };
