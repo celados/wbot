@@ -112,8 +112,22 @@ wbot messages.send '{ "conversationId": "conversation-id", "requestId": "digest:
 wbot outbound-sends.get '{ "outboundSendId": "outbound-send-id" }'
 ```
 
+Multi-line text is easiest as the whole input in YAML on stdin: the quoted heredoc expands nothing
+and `|` keeps the lines verbatim. The same object can come from a file: `wbot messages.send @send.yaml`.
+
+```sh
+wbot messages.send - <<'EOF'
+conversationId: conversation-id
+requestId: digest:2026-09-21:conversation-id
+requestedBy: agent:grok
+text: |
+  Daily summary
+  - 3 new threads
+EOF
+```
+
 All four send fields are required non-empty strings. `requestedBy` identifies the caller for
-attribution; it does not change the Tenant or its authorization. JSON text supports newlines and
+attribution; it does not change the Tenant or its authorization. Text supports newlines and
 Unicode. The send result contains `outboundSendId`, `conversationId`, and `status: "queued"`.
 Save `outboundSendId` and query it to obtain the current execution outcome.
 
