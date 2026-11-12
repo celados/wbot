@@ -85,13 +85,13 @@ try {
   const wbot = join(globalBinDirectory, "wbot");
   const schema = await runCommand([wbot, "@schema"], consumerDirectory);
   for (const command of [
-    "list(input:",
-    "history(input:",
-    "updates(input:",
-    "send(input:",
+    "### conversations.list",
+    "### messages.history",
+    "### messages.updates",
+    "### messages.send",
     "imagePath",
     "outbound-sends",
-    "mcp()",
+    "### mcp",
   ]) {
     if (!schema.stdout.includes(command)) {
       throw new Error(`The installed wbot artifact is missing ${command}`);

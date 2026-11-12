@@ -51,11 +51,11 @@ describe("功能 1：外部用户只看到一个产品入口", () => {
     const result = await runCli(["@schema"]);
 
     expect(result.exitCode, result.stderr).toBe(0);
-    expect(result.stdout).toMatch(/conversations:\s*\{[\s\S]*list\(input:/);
-    expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*history\(input:/);
-    expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*updates\(input:/);
-    expect(result.stdout).toContain("mcp()");
-    expect(result.stdout).toContain("send(input:");
+    expect(result.stdout).toContain("### conversations.list");
+    expect(result.stdout).toContain("### messages.history");
+    expect(result.stdout).toContain("### messages.updates");
+    expect(result.stdout).toContain("### mcp");
+    expect(result.stdout).toContain("### messages.send");
     expect(result.stdout).toContain("outbound-sends");
     expect(result.stdout).not.toMatch(/operator/i);
   });
