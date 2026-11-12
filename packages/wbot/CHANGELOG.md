@@ -8,7 +8,7 @@ All notable changes to the public wbot client are documented in this file.
 
 ### Changed
 
-- Update the CLI framework from `@celados/argc` 8.0 to 10.0. Breaking for callers that read
+- Update the CLI framework from `@celados/argc` 8.0 to 10.2. Breaking for callers that read
   `@schema` text or branch on input error codes:
   - argc 9.0 removes the agent pipe guard: `wbot @skill`, `wbot @schema` and help are no longer
     refused with `OUTPUT_CAPTURED` when stdout is captured.
