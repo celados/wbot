@@ -243,10 +243,10 @@ jobs:
           done
           [[ "$installed" == "true" ]]
           schema=$("$BUN_INSTALL_BIN/wbot" @schema)
-          grep -q 'list(input:' <<<"$schema"
-          grep -q 'history(input:' <<<"$schema"
-          grep -q 'updates(input:' <<<"$schema"
-          grep -q 'mcp()' <<<"$schema"
+          grep -q '^### conversations.list$' <<<"$schema"
+          grep -q '^### messages.history$' <<<"$schema"
+          grep -q '^### messages.updates$' <<<"$schema"
+          grep -q '^### mcp$' <<<"$schema"
           test ! -e "$BUN_INSTALL_BIN/wbot-mcp"
           test ! -e "$BUN_INSTALL_BIN/wbot-test"
           test ! -e "$BUN_INSTALL_BIN/wbot-test-mcp"
