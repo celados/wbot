@@ -4,6 +4,17 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.3.0-rc.2 - 2026-11-12
+
+### Breaking Changes
+
+- Update the CLI framework from `@celados/argc` 10.2 to 11.0. Breaking for callers that read `@schema`
+  text: it is flat Markdown now. `## Commands` lists one `### <path>` block per command (for example
+  `### messages.send`): the description, the input object `{ field: Type  // note }` with `= default`
+  for defaulted fields, and no nested `wbot: { messages: { send(input: …) } }` type or `/** */`
+  blocks. A namespace is `### messages.*`; the hidden `auth` group is still named by path
+  (`wbot @schema .auth`). Command names, fields, results, MCP tools and the Platform API are unchanged.
+
 ## 0.3.0-rc.1 - 2026-11-12
 
 ### Breaking Changes

@@ -47,10 +47,10 @@ describe("功能 1：CLI 发送能力与 MCP 只读工具面", () => {
 
     expect(result.exitCode, result.stderr).toBe(0);
     expect(result.stdout).toContain("wbot");
-    expect(result.stdout).toMatch(/conversations:\s*\{[\s\S]*list\(input:/);
-    expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*history\(input:/);
-    expect(result.stdout).toMatch(/messages:\s*\{[\s\S]*updates\(input:/);
-    expect(result.stdout).toContain("send(input:");
+    expect(result.stdout).toContain("### conversations.list");
+    expect(result.stdout).toContain("### messages.history");
+    expect(result.stdout).toContain("### messages.updates");
+    expect(result.stdout).toContain("### messages.send");
     expect(result.stdout).toContain("outbound-sends");
     expect(result.stdout).toContain("requestId: string");
     expect(result.stdout).not.toMatch(/operator/i);
