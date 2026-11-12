@@ -4,6 +4,23 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.3.0-rc.1 - 2026-11-12
+
+### Changed
+
+- Update the CLI framework from `@celados/argc` 8.0 to 10.0. Breaking for callers that read
+  `@schema` text or branch on input error codes:
+  - argc 9.0 removes the agent pipe guard: `wbot @skill`, `wbot @schema` and help are no longer
+    refused with `OUTPUT_CAPTURED` when stdout is captured.
+  - The whole input object may come from stdin (`wbot messages.send - <<'EOF' … EOF`) or a file
+    (`wbot messages.send @send.yaml`) as YAML or JSON5, so multi-line `text` needs no escaping.
+  - A malformed input is `error: BAD_INPUT` (with `source`, `format`, `line`/`col`) instead of
+    `BAD_INPUT_JSON`.
+  - `@schema` renders input-side types (fields with defaults are optional, e.g. `limit?: number`) and
+    its `call:` frontmatter is a list that includes the heredoc form. The hidden `auth` group is no
+    longer listed (argc 8.2 honours `hidden`); `wbot @schema .auth` and `wbot auth set` still work.
+  - Command names, fields, results, MCP tools and the Platform API are unchanged.
+
 ## 0.2.8 - 2026-11-06
 
 ### Changed

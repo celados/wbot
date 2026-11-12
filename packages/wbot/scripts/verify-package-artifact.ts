@@ -165,8 +165,7 @@ async function runCommand(
 ): Promise<{ stdout: string; stderr: string }> {
   const child = Bun.spawn([...command], {
     cwd,
-    // A program reading the CLI's output opts out of argc's agent pipe guard (7.12).
-    env: { ...Bun.env, ...additionalEnvironment, CI: "1", ARGC_ALLOW_CAPTURE: "1" },
+    env: { ...Bun.env, ...additionalEnvironment, CI: "1" },
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
