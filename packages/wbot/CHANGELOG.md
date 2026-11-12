@@ -6,7 +6,7 @@ All notable changes to the public wbot client are documented in this file.
 
 ## 0.3.0-rc.1 - 2026-11-12
 
-### Changed
+### Breaking Changes
 
 - Update the CLI framework from `@celados/argc` 8.0 to 10.2. Breaking for callers that read
   `@schema` text or branch on input error codes:
