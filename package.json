@@ -1,26 +1,30 @@
 {
-  "name": "wbot-workspace",
-  "private": true,
-  "workspaces": [
-    "packages/wbot",
-    "integrations/digest"
-  ],
-  "type": "module",
-  "scripts": {
-    "check": "vp check",
-    "test": "vitest run packages/wbot",
-    "typecheck": "tsc --noEmit",
-    "digest:dev": "bun run --cwd integrations/digest convex:dev",
-    "digest:push": "bun run --cwd integrations/digest convex:push",
-    "digest:dashboard": "bun run --cwd integrations/digest convex:dashboard",
-    "verify:package": "bun run ./packages/wbot/scripts/verify-package-artifact.ts"
-  },
-  "devDependencies": {
-    "@types/bun": "1.3.14",
-    "@types/node": "24.13.3",
-    "typescript": "5.9.3",
-    "vite-plus": "0.1.12",
-    "vitest": "4.1.0"
-  },
-  "packageManager": "bun@1.3.13"
+	"name": "wbot-workspace",
+	"private": true,
+	"workspaces": [
+		"packages/wbot",
+		"integrations/digest"
+	],
+	"type": "module",
+	"scripts": {
+		"check": "vp check && harness typecheck && fallow dead-code && bun run test",
+		"test": "vp test run",
+		"typecheck": "harness typecheck",
+		"digest:dev": "bun run --cwd integrations/digest convex:dev",
+		"digest:push": "bun run --cwd integrations/digest convex:push",
+		"digest:dashboard": "bun run --cwd integrations/digest convex:dashboard",
+		"verify:package": "bun run ./packages/wbot/scripts/verify-package-artifact.ts",
+		"prepare": "vp config"
+	},
+	"devDependencies": {
+		"@celados/harness": "^0.1.3",
+		"@types/bun": "1.3.14",
+		"@types/node": "24.13.3",
+		"fallow": "^3.42.0",
+		"tsrs": "0.24.0-ts7.1.0-beta",
+		"typescript": "^7.0.2",
+		"vite-plus": "^1.6.0",
+		"vitest": "4.1.0"
+	},
+	"packageManager": "bun@1.3.13"
 }

@@ -1,0 +1,5 @@
+{
+	"$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+	// Local-only helper that renders .npmrc from the vault; not a dependency.
+	"ignoreBinaries": ["latch"],
+}

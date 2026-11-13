@@ -6,3 +6,4 @@ dist/
 
 # Local webhook receiver state
 webhook.sqlite*
+.claude/worktrees/
