@@ -2,7 +2,7 @@
 type: Glossary
 title: wbot domain language
 description: Canonical language for wbot releases and Platform compatibility.
-generated: { by: codex/gpt-5, at: "2026-08-11T11:31:16+08:00" }
+generated: { by: codex/gpt-5, at: '2026-08-11T11:31:16+08:00' }
 ---
 
 # wbot

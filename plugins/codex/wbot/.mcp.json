@@ -1,14 +1,14 @@
 {
-  "mcpServers": {
-    "wbot": {
-      "command": "bunx",
-      "args": [
-        "--bun",
-        "--package",
-        "@celados/wbot@https://github.com/celados/wbot/releases/download/v0.3.0-rc.2/wbot-0.3.0-rc.2.tgz",
-        "wbot",
-        "mcp"
-      ]
-    }
-  }
+	"mcpServers": {
+		"wbot": {
+			"command": "bunx",
+			"args": [
+				"--bun",
+				"--package",
+				"@celados/wbot@https://github.com/celados/wbot/releases/download/v0.3.0-rc.2/wbot-0.3.0-rc.2.tgz",
+				"wbot",
+				"mcp"
+			]
+		}
+	}
 }

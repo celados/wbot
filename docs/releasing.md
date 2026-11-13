@@ -4,7 +4,7 @@ title: Release and compatibility policy
 description: SemVer, changelog, Platform compatibility, and verification rules for wbot releases.
 when: Preparing or reviewing a wbot client release or a Platform contract change.
 status: accepted # draft | accepted | superseded
-generated: { by: codex/gpt-5, at: "2026-08-11T11:31:16+08:00" }
+generated: { by: codex/gpt-5, at: '2026-08-11T11:31:16+08:00' }
 ---
 
 # Release and compatibility policy

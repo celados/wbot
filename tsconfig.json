@@ -1,8 +1,4 @@
 {
 	"extends": "@celados/harness/tsconfig/bun.json",
-	"include": [
-		"packages/wbot/**/*.ts",
-		"examples/**/*.ts",
-		"vite.config.ts"
-	]
+	"include": ["packages/wbot/**/*.ts", "examples/**/*.ts", "vite.config.ts"]
 }

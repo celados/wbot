@@ -3,7 +3,7 @@ type: ADR
 title: Separate wbot releases from Platform API compatibility
 description: Why wbot uses independent client SemVer and additive Platform API majors.
 status: accepted # proposed | accepted | deprecated | superseded
-generated: { by: codex/gpt-5, at: "2026-08-11T11:31:16+08:00" }
+generated: { by: codex/gpt-5, at: '2026-08-11T11:31:16+08:00' }
 ---
 
 # Separate wbot releases from Platform API compatibility
