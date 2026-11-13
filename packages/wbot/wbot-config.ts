@@ -20,7 +20,7 @@ const credentialsSchema = v.strictObject({
 	apiKey: v.pipe(v.string(), v.minLength(1)),
 })
 
-export const wbotCredentialsPath = (environment: WbotEnvironment) => {
+const wbotCredentialsPath = (environment: WbotEnvironment) => {
 	const configRoot = environment.XDG_CONFIG_HOME ?? join(homedir(), '.config')
 	return join(configRoot, 'wbot', 'credentials.json')
 }

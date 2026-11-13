@@ -135,7 +135,7 @@ const app = cli(commands, {
 		'Read WeChat conversations and send authorized text or JPEG images through wbot',
 })
 
-export const runWbotCli = async () => {
+const runWbotCli = async () => {
 	const callPlatform = async <Result>(
 		operation: (client: WbotClient) => Promise<Result>,
 	) => operation(await createWbotPlatformClientFromEnvironment(process.env))

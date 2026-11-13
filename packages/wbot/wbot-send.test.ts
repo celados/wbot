@@ -194,6 +194,7 @@ const createFixture = async (
 		authorization?: string
 		body: unknown
 	}> = []
+	// oxlint-disable-next-line typescript/no-misused-promises -- test server: a handler rejection surfaces as an unhandled error and fails the run
 	const server = createServer(async (request, response) => {
 		const chunks: Buffer[] = []
 		for await (const chunk of request) chunks.push(Buffer.from(chunk))

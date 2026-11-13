@@ -238,6 +238,7 @@ async function verifyImageSend(wbot: string, directory: string): Promise<void> {
 		port: 0,
 		async fetch(request) {
 			requests++
+			// oxlint-disable-next-line typescript/no-deprecated -- Bun parses the CLI's own multipart upload here; the warning concerns untrusted server input
 			const form = await request.formData()
 			const image = form.get('image')
 			valid =

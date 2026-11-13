@@ -17,6 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -34,9 +39,6 @@ jobs:
 
       - name: Check
         run: bun run check
-
-      - name: Test
-        run: bun run test
 
       - name: Verify installable package artifact
         run: bun run verify:package

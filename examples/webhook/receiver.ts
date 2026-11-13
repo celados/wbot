@@ -9,7 +9,7 @@ process.umask(0o077)
 const db = new Database(process.env.WBOT_WEBHOOK_DB ?? 'webhook.sqlite', {
 	create: true,
 })
-db.exec(`PRAGMA journal_mode=WAL;
+db.run(`PRAGMA journal_mode=WAL;
   CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), conversation TEXT NOT NULL, cursor TEXT, pending INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, accepted_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS projections (id TEXT PRIMARY KEY, revision INTEGER NOT NULL);`)
@@ -25,7 +25,7 @@ if (
 ) {
 	throw new Error('Use a separate database for each conversation.')
 }
-db.exec('UPDATE checkpoint SET pending=1 WHERE id=1')
+db.run('UPDATE checkpoint SET pending=1 WHERE id=1')
 let running = false
 let retry: ReturnType<typeof setTimeout> | undefined
 
@@ -47,7 +47,7 @@ async function drain() {
 			}
 			if (!row.pending) break
 			// Notifications arriving during this await set pending again. Never erase that newer wake-up.
-			db.exec('UPDATE checkpoint SET pending=0 WHERE id=1')
+			db.run('UPDATE checkpoint SET pending=0 WHERE id=1')
 			const child = Bun.spawn(
 				[
 					cli,
@@ -90,7 +90,7 @@ async function drain() {
 			})()
 		}
 	} catch {
-		db.exec('UPDATE checkpoint SET pending=1 WHERE id=1')
+		db.run('UPDATE checkpoint SET pending=1 WHERE id=1')
 		console.error(
 			'Message drain failed; cursor retained. Retrying in 30 seconds.',
 		)
@@ -122,7 +122,7 @@ Bun.serve({
 				event.eventId,
 				Date.now(),
 			)
-			db.exec('UPDATE checkpoint SET pending=1 WHERE id=1')
+			db.run('UPDATE checkpoint SET pending=1 WHERE id=1')
 			db.query('DELETE FROM events WHERE accepted_at < ?').run(
 				Date.now() - 7 * 86400_000,
 			)

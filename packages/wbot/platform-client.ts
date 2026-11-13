@@ -70,8 +70,6 @@ type PlatformClientConfig = {
 /** Upper bound on one honoured Retry-After wait so a bad header cannot hang a caller. */
 export const maxRateLimitRetryWaitMs = 60_000
 
-type PlatformEnvironment = Record<string, string | undefined>
-
 export class PlatformRequestError extends Error {
 	readonly status: number
 	readonly code: PlatformErrorCode
@@ -106,24 +104,6 @@ export class PlatformContractError extends Error {
 		this.endpoint = endpoint
 		this.issuePaths = issuePaths
 	}
-}
-
-export const createPlatformClientFromEnv = (
-	environment: PlatformEnvironment,
-): WbotClient => {
-	const baseUrl = environment.SWITCHBOARD_PLATFORM_URL
-	const tenantApiKey = environment.SWITCHBOARD_TENANT_API_KEY
-	const missing = [
-		baseUrl === undefined ? 'SWITCHBOARD_PLATFORM_URL' : null,
-		tenantApiKey === undefined ? 'SWITCHBOARD_TENANT_API_KEY' : null,
-	].filter((name) => name !== null)
-	if (missing.length > 0) {
-		throw new Error(`Missing configuration: ${missing.join(', ')}`)
-	}
-	if (baseUrl === undefined || tenantApiKey === undefined) {
-		throw new Error('Missing Platform configuration')
-	}
-	return createPlatformClient({ baseUrl, tenantApiKey })
 }
 
 export const createPlatformClient = (
