@@ -4,6 +4,14 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.4.0-rc.1 - 2026-11-26
+
+### Breaking Changes
+
+- Upgrade to argc 12. Use call paths for `@schema`: `wbot @schema messages.history`
+  shows one command and `wbot @schema 'messages.*'` lists the commands in a group.
+  Use `wbot @search history` to find commands by keyword.
+
 ## 0.3.0-rc.2 - 2026-11-12
 
 ### Breaking Changes
@@ -12,8 +20,7 @@ All notable changes to the public wbot client are documented in this file.
   text: it is flat Markdown now. `## Commands` lists one `### <path>` block per command (for example
   `### messages.send`): the description, the input object `{ field: Type  // note }` with `= default`
   for defaulted fields, and no nested `wbot: { messages: { send(input: …) } }` type or `/** */`
-  blocks. A namespace is `### messages.*`; the hidden `auth` group is still named by path
-  (`wbot @schema .auth`). Command names, fields, results, MCP tools and the Platform API are unchanged.
+  blocks. A namespace is `### messages.*`; the hidden `auth` group is still accessible by exact path. Command names, fields, results, MCP tools and the Platform API are unchanged.
 
 ## 0.3.0-rc.1 - 2026-11-12
 
@@ -29,7 +36,7 @@ All notable changes to the public wbot client are documented in this file.
     `BAD_INPUT_JSON`.
   - `@schema` renders input-side types (fields with defaults are optional, e.g. `limit?: number`) and
     its `call:` frontmatter is a list that includes the heredoc form. The hidden `auth` group is no
-    longer listed (argc 8.2 honours `hidden`); `wbot @schema .auth` and `wbot auth set` still work.
+    longer listed (argc 8.2 honours `hidden`); direct selection and `wbot auth set` still work.
   - Command names, fields, results, MCP tools and the Platform API are unchanged.
 
 ## 0.2.8 - 2026-11-06
