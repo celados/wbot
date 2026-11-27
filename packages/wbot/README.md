@@ -30,6 +30,9 @@ Discover the machine-readable schema without authentication:
 wbot @schema
 ```
 
+Use `wbot @schema messages.history` for one command, `wbot @schema 'messages.*'` for the group,
+and `wbot @search history` to find commands by intent.
+
 The public read surface is:
 
 ```sh

@@ -119,6 +119,25 @@ try {
 			throw new Error(`The installed wbot artifact is missing ${command}`)
 		}
 	}
+	const historySchema = await runCommand(
+		[wbot, '@schema', 'messages.history'],
+		consumerDirectory,
+	)
+	if (
+		!historySchema.stdout.includes('### messages.history') ||
+		historySchema.stdout.includes('### messages.send')
+	) {
+		throw new Error(
+			'The installed wbot schema did not select only messages.history.',
+		)
+	}
+	const historySearch = await runCommand(
+		[wbot, '@search', 'history', '--in', 'messages.*'],
+		consumerDirectory,
+	)
+	if (!historySearch.stdout.includes('### messages.history')) {
+		throw new Error('The installed wbot search did not find messages.history.')
+	}
 	await runCommand(['test', '-x', wbot], consumerDirectory)
 	await verifyImageSend(wbot, consumerDirectory)
 
