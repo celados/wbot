@@ -4,6 +4,18 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.4.0-rc.2 - 2026-11-28
+
+### Breaking Changes
+
+- The argc 12 migration changes command discovery from the previous stable release.
+  Use `wbot @schema messages.history` for a command signature,
+  `wbot @schema 'messages.*'` for a group, and `wbot @search history` to search by intent.
+
+### Changed
+
+- Verify call-path schema selection and scoped search from the installed release bundle.
+
 ## 0.4.0-rc.1 - 2026-11-26
 
 ### Breaking Changes
