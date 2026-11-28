@@ -32,7 +32,7 @@ try {
 			environment,
 			[apiKey],
 		)
-	// Webhooks remain on /platform/v1; every read below uses /platform/v2.
+	// Every command below uses /platform/v2.
 	await wbot('webhooks.list')
 	await wbot('accounts.list')
 	const conversationsResult = await wbot('conversations.list')

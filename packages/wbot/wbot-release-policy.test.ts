@@ -681,7 +681,7 @@ describe('功能 6：稳定发布具有当前后端兼容证据', () => {
 			'against the current test Platform contract',
 		)
 		expect(platform.paths).toEqual([
-			'POST /platform/v1/webhooks/list',
+			'GET /platform/v2/webhooks',
 			'GET /platform/v2/accounts',
 			'GET /platform/v2/conversations',
 			'GET /platform/v2/conversations/conversation-1/messages?limit=1',
@@ -965,7 +965,7 @@ const createCompatibilityPlatformServer = async () => {
 			response.setHeader('Content-Type', 'application/json')
 			const pathname = new URL(path, 'http://fixture').pathname
 			const body =
-				pathname === '/platform/v1/webhooks/list'
+				pathname === '/platform/v2/webhooks'
 					? { items: [] }
 					: pathname === '/platform/v2/accounts'
 						? { items: [createAccountFixture()] }
