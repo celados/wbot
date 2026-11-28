@@ -7,7 +7,7 @@ import type { WbotClient } from './platform-client'
 
 import { createPlatformClient } from './platform-client'
 
-export const DEFAULT_WBOT_PLATFORM_URL = 'https://wbot-api-prod.celados.com'
+export const DEFAULT_WBOT_PLATFORM_URL = 'https://wbot-api-test.celados.com'
 
 type WbotEnvironment = Record<string, string | undefined>
 

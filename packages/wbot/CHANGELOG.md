@@ -4,6 +4,71 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.4.0-rc.3 - 2026-11-28
+
+### Breaking Changes
+
+- The default Platform URL is now `https://wbot-api-test.celados.com`, where API keys are issued
+  and `/platform/v2` is served. `https://wbot-api-prod.celados.com` still serves only
+  `/platform/v1` and does not work with this release. `WBOT_PLATFORM_URL` remains an override.
+- Reads and text sends move from `/platform/v1` to `/platform/v2`. There is no v1 fallback.
+- `conversations.list` and MCP `list_conversations` take no input and return
+  `{ items: Conversation[] }`, every readable conversation, newest activity first. `cursor`,
+  `limit`, `nextCursor` and `hasMore` are gone. Conversations add `accountId` and
+  `lastActivityAtMs`, `avatar` is always present, and `latestMessage` is a full `Message`.
+- `captureFreshness` moves from conversations and updates pages to the new `accounts.list`, once
+  per account, and `asOfMs` is a number.
+- `messages.updates` and MCP `read_message_updates` read the per-conversation change log. Without
+  `cursor` they return no items and a tail cursor (they no longer return a first page). Items are
+  `{ sequence, kind, occurredAtMs, message }` with `kind` `message.created`, `message.retracted` or
+  `message.attachment_ready`. Updates cursors from earlier releases are rejected; bootstrap again
+  and use `messages.history` for backlog.
+- `messages.history` returns `{ items, nextCursor, hasMore }` with `nextCursor` `null` on an empty
+  page. History cursors from earlier releases are rejected.
+- The message shape is the v2 `Message`: `id` replaces `messageId`; `occurredAtMs` and
+  `file.sizeBytes` are numbers; `revision` is always present; retraction is
+  `state: "retracted"` with `retractedAtMs` and `content: null` instead of the `retracted` content
+  kind; quotes carry `state`; `nudge.target` and `group_invitation.members` move inside `content`
+  (top-level `target` and `invitedMembers` are gone); identities always carry `avatar`; every
+  message has `mentions`, `mentionsAll` and `mentionsSelf`, and own-Tenant outgoing messages carry
+  `outboundSendId`. The latest-message `type`, `text` and `originalType` fields are gone.
+- `messages.send` with `text` calls `POST /platform/v2/conversations/{id}/messages` with
+  `requestId` as the `Idempotency-Key` header and returns the current outbound send
+  `{ id, conversationId, status, attemptCount, error, reflectedMessageId, createdAtMs, updatedAtMs }`.
+  A replay with the same `requestId` returns the send in its current state instead of always
+  `queued`.
+- `messages.send` with `imagePath` still uses `/platform/v1/messages/send` (no v2 image send yet) and
+  returns `{ id, conversationId, status: "queued" }`; `outboundSendId` is renamed `id`.
+- `outbound-sends.get` calls `GET /platform/v2/outbound-sends/{id}` and returns the outbound send
+  shape above; `outboundSendId` in the result is renamed `id` (the input field keeps its name).
+- `PlatformContractError.endpoint` is `<METHOD> <route template>`, for example
+  `GET /platform/v2/conversations/{id}/changes`.
+- The exported client replaces `queryConversations`, `queryMessageHistory`, `queryMessages` and
+  `sendMessage` with `listAccounts`, `listConversations`, `listMessages`, `listChanges`,
+  `getMessage`, `sendText` and `sendImage`.
+
+### Added
+
+- `accounts.list` and MCP `list_accounts`: accounts with adapter capabilities, self identity and
+  capture freshness.
+- `messages.get` and MCP `get_message`: one message with a freshly signed attachment URL.
+
+### Changed
+
+- Webhook management stays on `/platform/v1/webhooks/*` because v2 has no webhooks yet.
+- The release compatibility gate also checks `accounts.list`, `messages.get`, and an updates
+  bootstrap followed by a forward read.
+
+### Migration
+
+- Unset any `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com` override, or keep it; both reach
+  the same Platform.
+- Re-bootstrap every saved updates cursor with `messages.updates` without `cursor`, then backfill
+  from `messages.history` if needed.
+- Merge messages by `id` and highest `revision`; treat `state: "retracted"` as a retraction.
+- Read freshness from `accounts.list` and join conversations by `accountId`.
+- Read the send ID from `id` in `messages.send` and `outbound-sends.get` results.
+
 ## 0.4.0-rc.2 - 2026-11-28
 
 ### Breaking Changes

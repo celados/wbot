@@ -20,7 +20,7 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 		executable = join(root, 'fake-wbot')
 	await writeFile(
 		executable,
-		`#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst input=JSON.parse(process.argv[3]);\nappendFileSync(process.env.QUERY_LOG, JSON.stringify(input)+'\\n');\nif(input.cursor==='one') await Bun.sleep(400);\nconst cursor=input.cursor ? 'two':'one';\nconsole.log(JSON.stringify({items:input.cursor==='two'?[]:[{messageId:cursor,revision:0}],nextCursor:cursor,hasMore:false}));\n`,
+		`#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst input=JSON.parse(process.argv[3]);\nappendFileSync(process.env.QUERY_LOG, JSON.stringify(input)+'\\n');\nif(input.cursor==='one') await Bun.sleep(400);\nconst cursor=input.cursor ? 'two':'one';\nconsole.log(JSON.stringify({items:input.cursor==='two'?[]:[{sequence:1,kind:"message.created",occurredAtMs:1,message:{id:cursor,revision:0}}],nextCursor:cursor,hasMore:false}));\n`,
 		{ mode: 0o700 },
 	)
 	const environment = {

@@ -1,8 +1,21 @@
 import * as v from 'valibot'
 
-const nullableString = v.nullable(v.string())
+import type { MessageContent } from './platform-types'
 
-const messageKindSchema = v.picklist([
+const nullableString = v.nullable(v.string())
+const epochMs = v.pipe(v.number(), v.integer(), v.minValue(0))
+const count = v.pipe(v.number(), v.integer(), v.minValue(0))
+
+const identitySchema = v.looseObject({
+	identityId: v.string(),
+	displayName: nullableString,
+	avatar: v.variant('status', [
+		v.looseObject({ status: v.literal('pending') }),
+		v.looseObject({ status: v.literal('ready'), url: v.string() }),
+	]),
+})
+
+const knownContentKinds = [
 	'text',
 	'image',
 	'audio',
@@ -13,14 +26,12 @@ const messageKindSchema = v.picklist([
 	'link',
 	'mini_program',
 	'nudge',
-	'unknown',
-	'retracted',
 	'group_invitation',
-])
+	'unknown',
+] as const satisfies ReadonlyArray<MessageContent['kind']>
+const knownContentKindSchema = v.picklist(knownContentKinds)
 
-const knownMessageContentSchema = v.variant('kind', [
-	v.looseObject({ kind: v.literal('retracted') }),
-	v.looseObject({ kind: v.literal('group_invitation') }),
+const knownContentSchema = v.variant('kind', [
 	v.looseObject({ kind: v.literal('text'), text: nullableString }),
 	v.looseObject({ kind: v.literal('image') }),
 	v.looseObject({ kind: v.literal('audio') }),
@@ -28,7 +39,7 @@ const knownMessageContentSchema = v.variant('kind', [
 	v.looseObject({
 		kind: v.literal('file'),
 		filename: nullableString,
-		sizeBytes: nullableString,
+		sizeBytes: v.nullable(count),
 	}),
 	v.looseObject({ kind: v.literal('emoji') }),
 	v.looseObject({ kind: v.literal('location') }),
@@ -47,146 +58,163 @@ const knownMessageContentSchema = v.variant('kind', [
 		pagePath: nullableString,
 		thumbnailUrl: nullableString,
 	}),
-	v.looseObject({ kind: v.literal('nudge'), suffix: nullableString }),
+	v.looseObject({
+		kind: v.literal('nudge'),
+		suffix: nullableString,
+		target: v.nullable(identitySchema),
+	}),
+	v.looseObject({
+		kind: v.literal('group_invitation'),
+		members: v.array(identitySchema),
+	}),
 	v.looseObject({ kind: v.literal('unknown'), preview: v.string() }),
 ])
 
-// Only unfamiliar kinds enter this branch. Malformed known variants must still fail.
-const futureMessageContentSchema = v.pipe(
+// Only unfamiliar kinds enter this branch; malformed known variants still fail closed.
+const futureContentSchema = v.pipe(
 	v.looseObject({ kind: v.pipe(v.string(), v.minLength(1)) }),
-	v.check((content) => !v.is(messageKindSchema, content.kind)),
+	v.check((content) => !v.is(knownContentKindSchema, content.kind)),
 	v.transform((content) => ({
 		kind: 'unknown' as const,
 		preview: 'Unsupported message type',
 		originalKind: content.kind,
-		originalContent: content,
+		originalContent: content as Record<string, unknown>,
 	})),
 )
-const messageContentSchema = v.union([
-	knownMessageContentSchema,
-	futureMessageContentSchema,
-])
 
-const latestMessageSchema = v.pipe(
-	v.looseObject({
-		id: v.string(),
-		direction: v.picklist(['in', 'out']),
-		type: v.pipe(v.string(), v.minLength(1)),
-		text: nullableString,
-		content: v.nullable(messageContentSchema),
-		occurredAtMs: v.string(),
-	}),
-	v.transform((message) => {
-		const type = v.safeParse(messageKindSchema, message.type)
-		return type.success
-			? { ...message, type: type.output }
-			: { ...message, type: 'unknown' as const, originalType: message.type }
-	}),
-)
+const contentSchema = v.union([knownContentSchema, futureContentSchema])
 
-const captureFreshnessSchema = v.looseObject({
-	status: v.picklist(['unknown', 'current', 'delayed', 'unavailable']),
-	asOfMs: nullableString,
-})
+const stateSchema = v.picklist(['active', 'retracted'])
 
-const conversationAvatarSchema = v.variant('kind', [
-	v.looseObject({ kind: v.literal('fallback') }),
-	v.looseObject({ kind: v.literal('image'), url: v.string() }),
-	v.looseObject({ kind: v.literal('composite'), urls: v.array(v.string()) }),
-])
+// Retraction is a state, not a content kind: content is null exactly when retracted.
+const contentMatchesState = (state: 'active' | 'retracted', content: unknown) =>
+	(state === 'retracted') === (content === null)
 
-const conversationSchema = v.looseObject({
-	id: v.string(),
-	channel: v.string(),
-	channelConversationId: v.string(),
-	kind: v.picklist(['direct', 'room']),
-	title: nullableString,
-	capabilities: v.array(v.picklist(['read', 'send'])),
-	captureFreshness: captureFreshnessSchema,
-	avatar: v.optional(conversationAvatarSchema),
-	latestMessage: v.nullable(latestMessageSchema),
-})
-
-export const conversationsPageSchema = v.looseObject({
-	items: v.array(conversationSchema),
-	nextCursor: v.string(),
-	hasMore: v.boolean(),
-})
-
-const messageIdentitySchema = v.looseObject({
-	identityId: v.string(),
-	displayName: nullableString,
-	avatar: v.optional(
-		v.variant('status', [
-			v.looseObject({ status: v.literal('pending') }),
-			v.looseObject({ status: v.literal('ready'), url: v.string() }),
-		]),
-	),
-})
-
-const messageAttachmentSchema = v.variant('status', [
+const attachmentSchema = v.variant('status', [
 	v.looseObject({ status: v.literal('pending') }),
 	v.looseObject({
 		status: v.literal('ready'),
 		url: v.string(),
 		mimeType: v.string(),
-		sizeBytes: v.number(),
+		sizeBytes: count,
 		descriptor: v.variant('kind', [
 			v.looseObject({
 				kind: v.literal('image'),
-				width: v.number(),
-				height: v.number(),
+				width: count,
+				height: count,
 			}),
 			v.looseObject({ kind: v.literal('file') }),
-			v.looseObject({ kind: v.literal('audio'), durationMs: v.number() }),
+			v.looseObject({ kind: v.literal('audio'), durationMs: count }),
 		]),
 	}),
 ])
 
-const messageSchema = v.looseObject({
-	messageId: v.string(),
-	referenceId: v.optional(v.string()),
-	revision: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0))),
-	conversationId: v.string(),
-	direction: v.picklist(['in', 'out']),
-	content: messageContentSchema,
-	sender: v.nullable(messageIdentitySchema),
-	target: v.optional(v.nullable(messageIdentitySchema)),
-	invitedMembers: v.optional(v.array(messageIdentitySchema)),
-	replyTo: v.nullable(
-		v.looseObject({
-			messageId: nullableString,
-			referenceId: v.optional(v.string()),
-			sender: v.nullable(messageIdentitySchema),
-			occurredAtMs: nullableString,
-			content: messageContentSchema,
-		}),
+const messageSchema = v.pipe(
+	v.looseObject({
+		id: v.string(),
+		conversationId: v.string(),
+		direction: v.picklist(['in', 'out']),
+		occurredAtMs: epochMs,
+		referenceId: v.optional(v.string()),
+		revision: count,
+		state: stateSchema,
+		retractedAtMs: v.optional(epochMs),
+		content: v.nullable(contentSchema),
+		sender: v.nullable(identitySchema),
+		replyTo: v.nullable(
+			v.pipe(
+				v.looseObject({
+					messageId: nullableString,
+					referenceId: v.optional(v.string()),
+					sender: v.nullable(identitySchema),
+					occurredAtMs: v.nullable(epochMs),
+					state: stateSchema,
+					content: v.nullable(contentSchema),
+				}),
+				v.check(
+					(reply) => contentMatchesState(reply.state, reply.content),
+					'replyTo content must match its state',
+				),
+			),
+		),
+		mentions: v.array(identitySchema),
+		mentionsAll: v.boolean(),
+		mentionsSelf: v.boolean(),
+		attachment: v.optional(attachmentSchema),
+		outboundSendId: v.optional(v.string()),
+	}),
+	v.check(
+		(message) => contentMatchesState(message.state, message.content),
+		'message content must match its state',
 	),
-	occurredAtMs: v.string(),
-	attachment: v.optional(messageAttachmentSchema),
+)
+
+const captureFreshnessSchema = v.looseObject({
+	status: v.picklist(['unknown', 'current', 'delayed', 'unavailable']),
+	asOfMs: v.nullable(epochMs),
 })
 
-export const messagesHistoryPageSchema = v.looseObject({
-	items: v.array(messageSchema),
-	nextCursor: v.string(),
-	hasMore: v.boolean(),
-})
-
-export const messagesQueryResultSchema = v.looseObject({
-	items: v.array(messageSchema),
-	nextCursor: v.string(),
-	hasMore: v.boolean(),
+const accountSchema = v.looseObject({
+	id: v.string(),
+	channel: v.string(),
+	// Adapter capabilities grow with channel features; keep unknown values.
+	capabilities: v.array(v.string()),
+	selfIdentity: v.nullable(identitySchema),
 	captureFreshness: captureFreshnessSchema,
 })
 
-export const messageSendResultSchema = v.looseObject({
-	outboundSendId: v.string(),
-	conversationId: v.string(),
-	status: v.literal('queued'),
+const conversationSchema = v.looseObject({
+	id: v.string(),
+	accountId: v.string(),
+	channel: v.string(),
+	channelConversationId: v.string(),
+	kind: v.picklist(['direct', 'room']),
+	title: nullableString,
+	avatar: v.variant('kind', [
+		v.looseObject({ kind: v.literal('fallback') }),
+		v.looseObject({ kind: v.literal('image'), url: v.string() }),
+		v.looseObject({ kind: v.literal('composite'), urls: v.array(v.string()) }),
+	]),
+	latestMessage: v.nullable(messageSchema),
+	lastActivityAtMs: v.nullable(epochMs),
+	capabilities: v.array(v.picklist(['read', 'send'])),
 })
 
-export const outboundSendResultSchema = v.looseObject({
-	outboundSendId: v.string(),
+export const accountListSchema = v.looseObject({
+	items: v.array(accountSchema),
+})
+
+export const conversationListSchema = v.looseObject({
+	items: v.array(conversationSchema),
+})
+
+export const messageResultSchema = messageSchema
+
+export const messagePageSchema = v.looseObject({
+	items: v.array(messageSchema),
+	nextCursor: nullableString,
+	hasMore: v.boolean(),
+})
+
+export const messageChangePageSchema = v.looseObject({
+	items: v.array(
+		v.looseObject({
+			sequence: count,
+			kind: v.picklist([
+				'message.created',
+				'message.retracted',
+				'message.attachment_ready',
+			]),
+			occurredAtMs: epochMs,
+			message: messageSchema,
+		}),
+	),
+	nextCursor: v.pipe(v.string(), v.minLength(1)),
+	hasMore: v.boolean(),
+})
+
+export const outboundSendSchema = v.looseObject({
+	id: v.string(),
 	conversationId: v.string(),
 	status: v.picklist([
 		'queued',
@@ -195,8 +223,26 @@ export const outboundSendResultSchema = v.looseObject({
 		'failed',
 		'indeterminate',
 	]),
+	attemptCount: count,
+	error: nullableString,
 	reflectedMessageId: nullableString,
+	createdAtMs: epochMs,
+	updatedAtMs: epochMs,
 })
+
+/** /platform/v1/messages/send result, projected onto the v2 send identity. */
+export const imageSendReceiptSchema = v.pipe(
+	v.looseObject({
+		outboundSendId: v.string(),
+		conversationId: v.string(),
+		status: v.literal('queued'),
+	}),
+	v.transform(({ outboundSendId, conversationId, status }) => ({
+		id: outboundSendId,
+		conversationId,
+		status,
+	})),
+)
 
 export const webhookResultSchema = v.object({
 	conversationId: v.pipe(v.string(), v.minLength(1)),
@@ -208,9 +254,9 @@ export const webhookResultSchema = v.object({
 		'failed',
 		'cancelled',
 	]),
-	attempts: v.pipe(v.number(), v.integer(), v.minValue(0)),
+	attempts: count,
 	lastError: v.nullable(v.string()),
-	lastDeliveredAtMs: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0))),
+	lastDeliveredAtMs: v.nullable(epochMs),
 })
 export const webhookListResultSchema = v.object({
 	items: v.array(webhookResultSchema),

@@ -3,50 +3,65 @@ import type * as v from 'valibot'
 import { safeParse } from 'valibot'
 
 import type {
+	Account,
+	Conversation,
+	ImageMessageSendInput,
+	ImageSendReceipt,
+	ItemList,
+	Message,
+	MessageChangePage,
+	MessageGetInput,
+	MessagePage,
+	MessageSendInput,
+	MessagesHistoryInput,
+	MessagesUpdatesInput,
+	OutboundSend,
+	OutboundSendGetInput,
+	PlatformErrorCode,
 	WebhookConfigureInput,
 	WebhookIdentityInput,
 	WebhookResult,
-	ConversationResult,
-	ConversationsQueryInput,
-	MessageResult,
-	MessagesHistoryInput,
-	MessagesQueryResult,
-	MessageSendInput,
-	ImageMessageSendInput,
-	MessageSendResult,
-	MessagesQueryInput,
-	OutboundSendGetInput,
-	OutboundSendResult,
-	Page,
-	PlatformErrorCode,
 } from './platform-types'
 
 import {
-	webhookResultSchema,
+	accountListSchema,
+	conversationListSchema,
+	imageSendReceiptSchema,
+	messageChangePageSchema,
+	messagePageSchema,
+	messageResultSchema,
+	outboundSendSchema,
 	webhookListResultSchema,
 	webhookRemoveResultSchema,
-	conversationsPageSchema,
-	messagesHistoryPageSchema,
-	messagesQueryResultSchema,
-	messageSendResultSchema,
-	outboundSendResultSchema,
+	webhookResultSchema,
 } from './platform-schemas'
 
+const v2 = '/platform/v2'
+
+/**
+ * The only operations still served by the frozen `/platform/v1` major, because
+ * `/platform/v2` does not cover them yet: JPEG image send and webhook management.
+ * Everything else uses `/platform/v2`; there is no v1 fallback.
+ */
+const platformV1Routes = {
+	imageSend: '/platform/v1/messages/send',
+	webhooksConfigure: '/platform/v1/webhooks/configure',
+	webhooksList: '/platform/v1/webhooks/list',
+	webhooksRemove: '/platform/v1/webhooks/remove',
+	webhooksRetry: '/platform/v1/webhooks/retry',
+} as const
+
 export type PlatformClient = {
-	queryConversations: (
-		input?: ConversationsQueryInput,
-	) => Promise<Page<ConversationResult>>
-	queryMessages: (input: MessagesQueryInput) => Promise<MessagesQueryResult>
-	queryMessageHistory: (
-		input: MessagesHistoryInput,
-	) => Promise<Page<MessageResult>>
-	sendMessage: (
-		input: MessageSendInput | ImageMessageSendInput,
-	) => Promise<MessageSendResult>
-	getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSendResult>
+	listAccounts: () => Promise<ItemList<Account>>
+	listConversations: () => Promise<ItemList<Conversation>>
+	listMessages: (input: MessagesHistoryInput) => Promise<MessagePage>
+	listChanges: (input: MessagesUpdatesInput) => Promise<MessageChangePage>
+	getMessage: (input: MessageGetInput) => Promise<Message>
+	sendText: (input: MessageSendInput) => Promise<OutboundSend>
+	sendImage: (input: ImageMessageSendInput) => Promise<ImageSendReceipt>
+	getOutboundSend: (input: OutboundSendGetInput) => Promise<OutboundSend>
 }
 
-// Keep PlatformClient's existing structural contract compatible for existing implementations.
 export type WebhookClient = {
 	configureWebhook: (input: WebhookConfigureInput) => Promise<WebhookResult>
 	listWebhooks: () => Promise<{ items: WebhookResult[] }>
@@ -118,29 +133,49 @@ export const createPlatformClient = (
 		config.sleep ??
 		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
 	let reportedDeprecation = false
-	const send = (path: string, body: object | FormData) =>
-		platformFetch(new URL(path, baseUrl), {
-			method: 'POST',
+	type PlatformRequest = {
+		method: 'GET' | 'POST'
+		path: string
+		/** Path template used in diagnostics when `path` embeds resource IDs. */
+		route?: string
+		query?: Record<string, string | number | undefined>
+		headers?: Record<string, string>
+		body?: object | FormData
+	}
+	const send = (request: PlatformRequest) => {
+		const url = new URL(request.path, baseUrl)
+		for (const [name, value] of Object.entries(request.query ?? {})) {
+			if (value !== undefined) url.searchParams.set(name, String(value))
+		}
+		const { body } = request
+		return platformFetch(url, {
+			method: request.method,
 			headers: {
 				Authorization: `Bearer ${config.tenantApiKey}`,
-				...(body instanceof FormData
+				...(body === undefined || body instanceof FormData
 					? {}
 					: { 'Content-Type': 'application/json' }),
+				...request.headers,
 			},
-			body: body instanceof FormData ? body : JSON.stringify(body),
+			body:
+				body === undefined || body instanceof FormData
+					? body
+					: JSON.stringify(body),
 		})
+	}
 	const request = async <Result>(
-		path: string,
-		body: object | FormData,
-		schema?: v.GenericSchema<unknown, Result>,
-	) => {
-		let response = await send(path, body)
+		platformRequest: PlatformRequest,
+		schema: v.GenericSchema<unknown, Result>,
+	): Promise<Result> => {
+		// Diagnostics name the route template, never IDs, query values or payloads.
+		const endpoint = `${platformRequest.method} ${platformRequest.route ?? platformRequest.path}`
+		let response = await send(platformRequest)
 		if (response.status === 429) {
 			// A 429 is rejected before any work, so one retry of the same request is safe,
 			// including sends that carry the same caller-owned requestId.
 			const payload = await response.json().catch(() => null)
 			await sleep(rateLimitWaitMs(response, payload))
-			response = await send(path, body)
+			response = await send(platformRequest)
 		}
 		if (response.ok && !reportedDeprecation) {
 			const warning = readDeprecationWarning(response.headers)
@@ -149,7 +184,7 @@ export const createPlatformClient = (
 				config.onDeprecationWarning?.(warning)
 			}
 		}
-		const payload = await readResponseBody(response, path)
+		const payload = await readResponseBody(response, endpoint)
 		if (!response.ok) {
 			const error = readError(payload)
 			if (response.status === 429) {
@@ -171,56 +206,114 @@ export const createPlatformClient = (
 				error?.code ?? 'internal_error',
 			)
 		}
-		if (!schema) return payload as Result
 		const result = safeParse(schema, payload)
 		if (!result.success) {
 			const issuePaths = result.issues.flatMap((issue) => {
 				const path = issue.path?.map((item) => String(item.key)).join('.')
 				return path ? [path] : []
 			})
-			throw new PlatformContractError(path, issuePaths)
+			throw new PlatformContractError(endpoint, issuePaths)
 		}
 		return result.output
 	}
+	const conversationPath = (conversationId: string, rest: string) =>
+		`${v2}/conversations/${encodeURIComponent(conversationId)}/${rest}`
 
 	return {
-		configureWebhook: (input) =>
-			request('/platform/v1/webhooks/configure', input, webhookResultSchema),
-		listWebhooks: () =>
-			request('/platform/v1/webhooks/list', {}, webhookListResultSchema),
-		removeWebhook: (input) =>
-			request('/platform/v1/webhooks/remove', input, webhookRemoveResultSchema),
-		retryWebhook: (input) =>
-			request('/platform/v1/webhooks/retry', input, webhookResultSchema),
-		queryConversations: (input = {}) =>
-			request<Page<ConversationResult>>(
-				'/platform/v1/conversations/query',
-				input,
-				conversationsPageSchema,
+		listAccounts: () =>
+			request({ method: 'GET', path: `${v2}/accounts` }, accountListSchema),
+		listConversations: () =>
+			request(
+				{ method: 'GET', path: `${v2}/conversations` },
+				conversationListSchema,
 			),
-		queryMessages: (input) =>
-			request<MessagesQueryResult>(
-				'/platform/v1/messages/query',
-				input,
-				messagesQueryResultSchema,
+		listMessages: (input) =>
+			request(
+				{
+					method: 'GET',
+					path: conversationPath(input.conversationId, 'messages'),
+					route: `${v2}/conversations/{id}/messages`,
+					query: { before: input.cursor, limit: input.limit },
+				},
+				messagePageSchema,
 			),
-		queryMessageHistory: (input) =>
-			request<Page<MessageResult>>(
-				'/platform/v1/messages/history',
-				input,
-				messagesHistoryPageSchema,
+		listChanges: (input) =>
+			request(
+				{
+					method: 'GET',
+					path: conversationPath(input.conversationId, 'changes'),
+					route: `${v2}/conversations/{id}/changes`,
+					query: { cursor: input.cursor, limit: input.limit },
+				},
+				messageChangePageSchema,
 			),
-		sendMessage: (input) =>
-			request<MessageSendResult>(
-				'/platform/v1/messages/send',
-				encodeSendInput(input),
-				messageSendResultSchema,
+		getMessage: (input) =>
+			request(
+				{
+					method: 'GET',
+					path: conversationPath(
+						input.conversationId,
+						`messages/${encodeURIComponent(input.messageId)}`,
+					),
+					route: `${v2}/conversations/{id}/messages/{messageId}`,
+				},
+				messageResultSchema,
+			),
+		sendText: (input) =>
+			request(
+				{
+					method: 'POST',
+					path: conversationPath(input.conversationId, 'messages'),
+					route: `${v2}/conversations/{id}/messages`,
+					headers: { 'Idempotency-Key': input.requestId },
+					body: {
+						content: { kind: 'text', text: input.text },
+						requestedBy: input.requestedBy,
+					},
+				},
+				outboundSendSchema,
+			),
+		sendImage: (input) =>
+			request(
+				{
+					method: 'POST',
+					path: platformV1Routes.imageSend,
+					body: encodeImageSend(input),
+				},
+				imageSendReceiptSchema,
 			),
 		getOutboundSend: (input) =>
-			request<OutboundSendResult>(
-				'/platform/v1/outbound-sends/get',
-				input,
-				outboundSendResultSchema,
+			request(
+				{
+					method: 'GET',
+					path: `${v2}/outbound-sends/${encodeURIComponent(input.outboundSendId)}`,
+					route: `${v2}/outbound-sends/{id}`,
+				},
+				outboundSendSchema,
+			),
+		configureWebhook: (input) =>
+			request(
+				{
+					method: 'POST',
+					path: platformV1Routes.webhooksConfigure,
+					body: input,
+				},
+				webhookResultSchema,
+			),
+		listWebhooks: () =>
+			request(
+				{ method: 'POST', path: platformV1Routes.webhooksList, body: {} },
+				webhookListResultSchema,
+			),
+		removeWebhook: (input) =>
+			request(
+				{ method: 'POST', path: platformV1Routes.webhooksRemove, body: input },
+				webhookRemoveResultSchema,
+			),
+		retryWebhook: (input) =>
+			request(
+				{ method: 'POST', path: platformV1Routes.webhooksRetry, body: input },
+				webhookResultSchema,
 			),
 	}
 }
@@ -333,10 +426,7 @@ const isPlatformErrorCode = (value: unknown): value is PlatformErrorCode =>
 
 export const MAX_SEND_IMAGE_BYTES = 5 * 1024 * 1024
 
-const encodeSendInput = (
-	input: MessageSendInput | ImageMessageSendInput,
-): object | FormData => {
-	if (!('content' in input)) return input
+const encodeImageSend = (input: ImageMessageSendInput): FormData => {
 	if (input.text !== undefined || input.content?.kind !== 'image') {
 		throw new Error('Specify exactly one text or image content')
 	}

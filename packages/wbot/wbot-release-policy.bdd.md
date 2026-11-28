@@ -158,15 +158,16 @@ And 发布状态明确指出缺少的兼容 gate
 
 ## Message evolution without cursor loss
 
-Given a valid page containing retracted, group_invitation, or a future content kind
-When CLI or MCP reads history or updates
+Given a valid page containing a retracted message, group_invitation, or a future content kind
+When CLI or MCP reads history, updates, or a conversation's latest message
 Then every message and its quote remain available with the same nextCursor and hasMore
-And retracted and group_invitation remain explicit known kinds
+And a retracted message has state retracted, retractedAtMs and null content
+And group_invitation keeps its members inside content
 And future content becomes unknown with originalKind and complete originalContent
-And unknown conversation preview types retain originalType
-And optional revision, referenceId and invitedMembers survive the HTTP boundary
+And revision, referenceId, mentions and outboundSendId survive the HTTP boundary
 
-Given malformed content for a known kind or a missing/empty/non-string kind
+Given malformed content for a known kind, a missing/empty/non-string kind, string timestamps,
+or content that disagrees with state (null while active, present while retracted)
 When a page is read
 Then the client still reports a sanitized invalid_platform_response
 And no successful cursor or partial page is emitted.
@@ -174,5 +175,7 @@ And no successful cursor or partial page is emitted.
 Scenario: Candidate webhook endpoint compatibility
 Given a candidate release artifact and a Test Tenant API Key
 When the stable release checks the current Platform
-Then webhooks.list must succeed through the installed CLI in addition to the existing read checks
+Then webhooks.list (v1) must succeed through the installed CLI in addition to the v2 read checks:
+accounts.list, conversations.list, messages.history, messages.get, and messages.updates bootstrap
+followed by a forward read from the returned cursor
 And mutation contracts are covered by fixtures and isolated receiver integration evidence

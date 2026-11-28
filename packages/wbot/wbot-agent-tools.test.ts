@@ -12,6 +12,12 @@ import { afterEach, describe, expect, test } from 'vitest'
 
 import type { PlatformClient } from './platform-client'
 
+import {
+	createAccountFixture,
+	createConversationFixture,
+	createMessageFixture,
+	createOutboundSendFixture,
+} from './platform-v2-fixtures'
 import { DEFAULT_WBOT_PLATFORM_URL, resolveWbotConfig } from './wbot-config'
 import { createWbotMcpServer } from './wbot-mcp'
 
@@ -60,12 +66,14 @@ describe('功能 1：CLI 发送能力与 MCP 只读工具面', () => {
 		expect(result.stdout).not.toMatch(/operator/i)
 	})
 
-	test('场景 1.2：MCP 使用 wbot 品牌且只列出同样三条只读工具', async () => {
+	test('场景 1.2：MCP 使用 wbot 品牌且只列出只读工具', async () => {
 		const fixture = await createMcpFixture(createPlatformClientStub())
 
 		const result = await fixture.client.listTools()
 
 		expect(result.tools.map((tool) => tool.name).sort()).toEqual([
+			'get_message',
+			'list_accounts',
 			'list_conversations',
 			'read_message_history',
 			'read_message_updates',
@@ -160,20 +168,7 @@ describe('功能 2：CLI 与 MCP 复用安全的本机凭据', () => {
 describe('功能 3 至 5：CLI 与 MCP 保持显式分页语义', () => {
 	test('场景 3.1：CLI 成功结果是 stdout 中唯一的 JSON', async () => {
 		const platform = await createFakePlatformServer({
-			items: [
-				{
-					id: 'room-1',
-					channel: 'wechat',
-					channelConversationId: 'opaque-room-1',
-					kind: 'room',
-					title: 'Founders Circle',
-					capabilities: ['read', 'send'],
-					captureFreshness: { status: 'current', asOfMs: '1786000000000' },
-					latestMessage: null,
-				},
-			],
-			nextCursor: 'next-conversation',
-			hasMore: false,
+			items: [createConversationFixture({ kind: 'room' })],
 		})
 
 		const result = await runCli(['conversations.list'], {
@@ -186,31 +181,124 @@ describe('功能 3 至 5：CLI 与 MCP 保持显式分页语义', () => {
 		expect(JSON.parse(result.stdout)).toEqual({
 			items: [
 				expect.objectContaining({
+					accountId: 'account-1',
 					capabilities: ['read', 'send'],
-					captureFreshness: { status: 'current', asOfMs: '1786000000000' },
 				}),
 			],
-			nextCursor: 'next-conversation',
+		})
+		expect(platform.requests).toEqual(['GET /platform/v2/conversations'])
+	})
+
+	test('场景 3.3：conversations.list 不接受分页输入', async () => {
+		const platform = await createFakePlatformServer({ items: [] })
+
+		const result = await runCli(['conversations.list', '{ "limit": 50 }'], {
+			WBOT_API_KEY: 'test-secret',
+			WBOT_PLATFORM_URL: platform.url,
+		})
+
+		expect(result.exitCode).not.toBe(0)
+		expect(result.stdout).toBe('')
+		expect(platform.requests).toEqual([])
+	})
+
+	test('场景 3.5：accounts.list 返回账号级采集新鲜度', async () => {
+		const account = createAccountFixture({
+			captureFreshness: { status: 'delayed', asOfMs: 1_785_999_800_000 },
+		})
+		const platform = await createFakePlatformServer({ items: [account] })
+
+		const result = await runCli(['accounts.list'], {
+			WBOT_API_KEY: 'test-secret',
+			WBOT_PLATFORM_URL: platform.url,
+		})
+
+		expect(result.exitCode, result.stderr).toBe(0)
+		expect(JSON.parse(result.stdout)).toEqual({ items: [account] })
+		expect(platform.requests).toEqual(['GET /platform/v2/accounts'])
+	})
+
+	test('场景 4.1、5.1 与 5.8：CLI 把读取映射到 v2 资源', async () => {
+		const message = createMessageFixture()
+		const platform = await createFakePlatformServer((path) =>
+			path.includes('/changes')
+				? { items: [], nextCursor: 'tail-cursor', hasMore: false }
+				: path.endsWith('/messages/message%2F1')
+					? message
+					: { items: [message], nextCursor: 'older', hasMore: true },
+		)
+		const environment = {
+			WBOT_API_KEY: 'test-secret',
+			WBOT_PLATFORM_URL: platform.url,
+		}
+
+		const history = await runCli(
+			[
+				'messages.history',
+				JSON.stringify({
+					conversationId: 'room/1',
+					cursor: 'history-cursor',
+					limit: 20,
+				}),
+			],
+			environment,
+		)
+		const bootstrap = await runCli(
+			['messages.updates', JSON.stringify({ conversationId: 'room/1' })],
+			environment,
+		)
+		const updates = await runCli(
+			[
+				'messages.updates',
+				JSON.stringify({ conversationId: 'room/1', cursor: 'tail-cursor' }),
+			],
+			environment,
+		)
+		const single = await runCli(
+			[
+				'messages.get',
+				JSON.stringify({ conversationId: 'room/1', messageId: 'message/1' }),
+			],
+			environment,
+		)
+
+		for (const result of [history, bootstrap, updates, single]) {
+			expect(result.exitCode, result.stderr).toBe(0)
+		}
+		expect(JSON.parse(history.stdout)).toEqual({
+			items: [message],
+			nextCursor: 'older',
+			hasMore: true,
+		})
+		expect(JSON.parse(bootstrap.stdout)).toEqual({
+			items: [],
+			nextCursor: 'tail-cursor',
 			hasMore: false,
 		})
+		expect(JSON.parse(single.stdout)).toEqual(message)
+		expect(platform.requests).toEqual([
+			'GET /platform/v2/conversations/room%2F1/messages?before=history-cursor&limit=20',
+			'GET /platform/v2/conversations/room%2F1/changes?limit=50',
+			'GET /platform/v2/conversations/room%2F1/changes?cursor=tail-cursor&limit=50',
+			'GET /platform/v2/conversations/room%2F1/messages/message%2F1',
+		])
 	})
 
 	test('场景 4.1 与 5.1：MCP 将 history 和 updates 分发到不同 Platform 方法', async () => {
 		const calls: Array<{ kind: string; input: unknown }> = []
 		const fixture = await createMcpFixture(
 			createPlatformClientStub({
-				queryMessageHistory: async (input) => {
+				listMessages: async (input) => {
 					calls.push({ kind: 'history', input })
 					return { items: [], nextCursor: 'history-next', hasMore: true }
 				},
-				queryMessages: async (input) => {
+				listChanges: async (input) => {
 					calls.push({ kind: 'updates', input })
-					return {
-						items: [],
-						nextCursor: 'updates-next',
-						hasMore: false,
-						captureFreshness: { status: 'delayed', asOfMs: '1785999800000' },
-					}
+					return { items: [], nextCursor: 'updates-next', hasMore: false }
+				},
+				getMessage: async (input) => {
+					calls.push({ kind: 'get', input })
+					return createMessageFixture() as never
 				},
 			}),
 		)
@@ -222,6 +310,10 @@ describe('功能 3 至 5：CLI 与 MCP 保持显式分页语义', () => {
 		const updates = await fixture.client.callTool({
 			name: 'read_message_updates',
 			arguments: { conversationId: 'room-1', cursor: 'updates-cursor' },
+		})
+		const single = await fixture.client.callTool({
+			name: 'get_message',
+			arguments: { conversationId: 'room-1', messageId: 'message-1' },
 		})
 
 		expect(calls).toEqual([
@@ -241,17 +333,19 @@ describe('功能 3 至 5：CLI 与 MCP 保持显式分页语义', () => {
 					limit: 50,
 				},
 			},
+			{
+				kind: 'get',
+				input: { conversationId: 'room-1', messageId: 'message-1' },
+			},
 		])
 		expect(history.structuredContent).toEqual({
 			result: { items: [], nextCursor: 'history-next', hasMore: true },
 		})
 		expect(updates.structuredContent).toEqual({
-			result: {
-				items: [],
-				nextCursor: 'updates-next',
-				hasMore: false,
-				captureFreshness: { status: 'delayed', asOfMs: '1785999800000' },
-			},
+			result: { items: [], nextCursor: 'updates-next', hasMore: false },
+		})
+		expect(single.structuredContent).toEqual({
+			result: createMessageFixture(),
 		})
 		await fixture.close()
 	})
@@ -370,33 +464,26 @@ const createMcpFixture = async (platformClient: PlatformClient) => {
 const createPlatformClientStub = (
 	overrides: Partial<PlatformClient> = {},
 ): PlatformClient => ({
-	queryConversations: async () => ({
-		items: [],
-		nextCursor: 'conversation-cursor',
-		hasMore: false,
-	}),
-	queryMessages: async () => ({
+	listAccounts: async () => ({ items: [] }),
+	listConversations: async () => ({ items: [] }),
+	listChanges: async () => ({
 		items: [],
 		nextCursor: 'updates-cursor',
 		hasMore: false,
-		captureFreshness: { status: 'unknown', asOfMs: null },
 	}),
-	queryMessageHistory: async () => ({
+	listMessages: async () => ({
 		items: [],
 		nextCursor: 'history-cursor',
 		hasMore: false,
 	}),
-	sendMessage: async () => ({
-		outboundSendId: 'send-1',
-		conversationId: 'room-1',
+	getMessage: async () => createMessageFixture() as never,
+	sendText: async () => createOutboundSendFixture() as never,
+	sendImage: async () => ({
+		id: 'send-1',
+		conversationId: 'conversation-1',
 		status: 'queued',
 	}),
-	getOutboundSend: async () => ({
-		outboundSendId: 'send-1',
-		conversationId: 'room-1',
-		status: 'accepted',
-		reflectedMessageId: null,
-	}),
+	getOutboundSend: async () => createOutboundSendFixture() as never,
 	...overrides,
 })
 
@@ -429,11 +516,16 @@ const writeCredentials = async (
 const readCredentials = (configRoot: string) =>
 	readFile(credentialsPath(configRoot), 'utf8')
 
-const createFakePlatformServer = (body: unknown) =>
-	new Promise<{ url: string }>((resolve, reject) => {
-		const server = createServer((_request, response) => {
+const createFakePlatformServer = (body: object | ((path: string) => unknown)) =>
+	new Promise<{ url: string; requests: Array<string> }>((resolve, reject) => {
+		const requests: Array<string> = []
+		const server = createServer((request, response) => {
+			const path = request.url ?? ''
+			requests.push(`${request.method} ${path}`)
 			response.setHeader('Content-Type', 'application/json')
-			response.end(JSON.stringify(body))
+			response.end(
+				JSON.stringify(typeof body === 'function' ? body(path) : body),
+			)
 		})
 		server.once('error', reject)
 		server.listen(0, '127.0.0.1', () => {
@@ -443,7 +535,7 @@ const createFakePlatformServer = (body: unknown) =>
 				return
 			}
 			servers.push(server)
-			resolve({ url: `http://127.0.0.1:${address.port}` })
+			resolve({ url: `http://127.0.0.1:${address.port}`, requests })
 		})
 	})
 

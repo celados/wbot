@@ -15,9 +15,10 @@ description: 按用户授权增加 CLI 发送入口，沿用 Platform 幂等与�
 ```gherkin
 Given Agent 有目标会话的 send 授权
 When Agent 提供非空 conversationId、requestId、text、requestedBy 调用 messages.send
-Then CLI 使用既有凭据向 Platform 提交一次请求
+Then CLI 使用既有凭据向 `POST /platform/v2/conversations/{id}/messages` 提交一次请求
+And requestId 作为 `Idempotency-Key` 头发送
 And 文本中的换行、引号和 Unicode 原样保留
-And stdout 返回 outboundSendId、conversationId 和 queued
+And stdout 返回当前 OutboundSend：id、conversationId、status、attemptCount、error、reflectedMessageId、createdAtMs、updatedAtMs
 And queued 不代表消息已送达
 ```
 
@@ -25,8 +26,9 @@ And queued 不代表消息已送达
 
 ```gherkin
 Given 调用方使用同一个 Tenant 和 requestId 重复提交完全相同的发送输入
-When Platform 返回相同 outboundSendId
-Then CLI 原样返回该标识，不生成新的 requestId
+When Platform 返回同一发送的当前状态
+Then CLI 原样返回该发送（状态可能已推进），不生成新的 requestId
+And requestId 与 v1 requestId 共用同一命名空间
 And 同一 requestId 对应不同输入时保留 Platform 的冲突错误
 ```
 
@@ -46,9 +48,9 @@ And stdout 没有成功结果
 ```gherkin
 Given Agent 保存了发送返回的 outboundSendId
 When Agent 执行 outbound-sends.get
-Then CLI 只提交一次结果查询
+Then CLI 只提交一次 `GET /platform/v2/outbound-sends/{id}` 查询
 And 原样返回 queued、processing、accepted、failed 或 indeterminate
-And 保留 nullable reflectedMessageId 和兼容新增字段
+And 保留 attemptCount、nullable error、nullable reflectedMessageId 和兼容新增字段
 And 不因 failed 或 indeterminate 发起新发送
 ```
 
@@ -78,19 +80,22 @@ And 协议错误不泄漏响应正文或凭据
 Given Agent 没有配置 API Key
 When Agent 查看 CLI schema
 Then 可以发现发送及结果查询的输入要求
-And MCP 仍只提供现有三个只读工具
+And MCP 仍只提供只读工具
 And 安装产物提供相同 CLI 能力
 ```
 
-## 场景 7：JPEG 文件通过同一发送接口提交
+## 场景 7：JPEG 文件仍通过 v1 发送接口提交
+
+`/platform/v2` 尚未提供图片发送，JPEG 是 CLI 中仅有的 v1 发送路径。
 
 ```gherkin
 Given 调用方提供 imagePath 指向一个不超过 5 MiB 的普通 JPEG 文件
 When messages.send 收到 conversationId、requestId、requestedBy 和 imagePath
-Then CLI 仅提交一次 multipart 请求到既有 messages/send 路由
+Then CLI 仅提交一次 multipart 请求到 `/platform/v1/messages/send`
 And metadata 保留调用方身份字段并包含 content.kind=image
 And image 部分包含原始文件字节，且不上传本地文件路径
-And 文字输入仍使用原有 JSON 请求
+And stdout 返回投影到 v2 发送标识的 id、conversationId 与 queued
+And 文字输入使用 v2 JSON 请求
 ```
 
 ## 场景 8：互斥与本地文件边界
@@ -109,6 +114,6 @@ Given 一个合法图片发送请求
 When 响应丢失、返回业务错误或成功响应不符合协议
 Then CLI 非零退出且不自动重试，不输出图片字节或凭据
 And 稳定 requestId 不会被改写
-And 图片结果查询沿用 queued/processing/accepted/failed/indeterminate
-And MCP 保持三个只读工具
+And 图片结果用 v2 outbound-sends.get 查询 queued/processing/accepted/failed/indeterminate
+And MCP 保持只读
 ```

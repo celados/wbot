@@ -12,14 +12,12 @@ import {
 	maxRateLimitRetryWaitMs,
 	PlatformRequestError,
 } from './platform-client'
+import { createOutboundSendFixture } from './platform-v2-fixtures'
 
 const cliEntry = new URL('./wbot-cli.ts', import.meta.url).pathname
 const servers: Array<Server> = []
-const page = { items: [], nextCursor: 'cursor', hasMore: false }
-const updates = {
-	...page,
-	captureFreshness: { status: 'current', asOfMs: '1788739200000' },
-}
+const page = { items: [] }
+const updates = { items: [], nextCursor: 'cursor', hasMore: false }
 
 afterEach(async () => {
 	await Promise.all(
@@ -69,11 +67,11 @@ describe('功能：共享 Platform client 遵守 429 Retry-After', () => {
 			() => Response.json(page),
 		])
 
-		expect(await client.queryConversations()).toEqual(page)
+		expect(await client.listConversations()).toEqual(page)
 		expect(sleeps).toEqual([2000])
 		expect(calls).toEqual([
-			'/platform/v1/conversations/query',
-			'/platform/v1/conversations/query',
+			'/platform/v2/conversations',
+			'/platform/v2/conversations',
 		])
 	})
 
@@ -84,7 +82,7 @@ describe('功能：共享 Platform client 遵守 429 Retry-After', () => {
 		])
 
 		const error = await client
-			.queryMessages({ conversationId: 'room-1' })
+			.listChanges({ conversationId: 'room-1' })
 			.catch((caught: unknown) => caught)
 
 		expect(error).toBeInstanceOf(PlatformRequestError)
@@ -108,26 +106,25 @@ describe('功能：共享 Platform client 遵守 429 Retry-After', () => {
 			() => Response.json(page),
 		])
 
-		await missingHeader.client.queryConversations()
-		await hugeHeader.client.queryConversations()
+		await missingHeader.client.listConversations()
+		await hugeHeader.client.listConversations()
 
 		expect(missingHeader.sleeps).toEqual([750])
 		expect(hugeHeader.sleeps).toEqual([maxRateLimitRetryWaitMs])
 	})
 
 	test('发送在 429 后以同一请求重试一次', async () => {
-		const queued = {
-			outboundSendId: 'send-1',
-			conversationId: 'room-1',
-			status: 'queued',
-		}
-		const bodies: Array<string> = []
+		const queued = createOutboundSendFixture({ conversationId: 'room-1' })
+		const requests: Array<{ body: string; idempotencyKey: string | null }> = []
 		const responses = [() => rateLimited('1'), () => Response.json(queued)]
 		const client = createPlatformClient({
 			baseUrl: 'https://platform.test',
 			tenantApiKey: 'fixture-secret',
 			fetch: async (_url, init) => {
-				bodies.push(String(init?.body))
+				requests.push({
+					body: String(init?.body),
+					idempotencyKey: new Headers(init?.headers).get('Idempotency-Key'),
+				})
 				return responses.shift()!()
 			},
 			sleep: async () => {},
@@ -139,8 +136,15 @@ describe('功能：共享 Platform client 遵守 429 Retry-After', () => {
 			requestedBy: 'agent:test',
 		}
 
-		expect(await client.sendMessage(input)).toEqual(queued)
-		expect(bodies).toEqual([JSON.stringify(input), JSON.stringify(input)])
+		expect(await client.sendText(input)).toEqual(queued)
+		const sent = {
+			body: JSON.stringify({
+				content: { kind: 'text', text: 'hi' },
+				requestedBy: 'agent:test',
+			}),
+			idempotencyKey: 'digest:1',
+		}
+		expect(requests).toEqual([sent, sent])
 	})
 
 	test('非 429 错误不重试', async () => {
@@ -152,7 +156,7 @@ describe('功能：共享 Platform client 遵守 429 Retry-After', () => {
 				),
 		])
 
-		await expect(client.queryConversations()).rejects.toMatchObject({
+		await expect(client.listConversations()).rejects.toMatchObject({
 			code: 'forbidden',
 			retryAfterMs: null,
 		})

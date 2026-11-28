@@ -17,18 +17,25 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
 	const server = new McpServer({ name: 'wbot', version: packageJson.version })
 
 	server.registerTool(
+		'list_accounts',
+		{
+			title: 'List accounts',
+			description:
+				'List the accounts behind readable conversations, with capabilities and capture freshness. Use freshness to tell a quiet conversation from delayed or unavailable capture.',
+			annotations: READ_ONLY,
+		},
+		() => callTool(clientSource, (client) => client.listAccounts()),
+	)
+
+	server.registerTool(
 		'list_conversations',
 		{
 			title: 'List conversations',
-			description: 'List the WeChat conversations this wbot API key can read.',
-			inputSchema: {
-				cursor: z.string().min(1).optional(),
-				limit: z.number().int().min(1).max(100).default(50),
-			},
+			description:
+				'List every WeChat conversation this wbot API key can read, most recent activity first. Not paginated; do not poll it for new messages.',
 			annotations: READ_ONLY,
 		},
-		(input) =>
-			callTool(clientSource, (client) => client.queryConversations(input)),
+		() => callTool(clientSource, (client) => client.listConversations()),
 	)
 
 	server.registerTool(
@@ -36,7 +43,7 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
 		{
 			title: 'Read message history',
 			description:
-				'Read the newest available messages, then page backward with the returned history cursor.',
+				'Read the newest messages (oldest first within a page), then page backward with the returned nextCursor.',
 			inputSchema: {
 				conversationId: z.string().min(1),
 				cursor: z.string().min(1).optional(),
@@ -44,8 +51,7 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
 			},
 			annotations: READ_ONLY,
 		},
-		(input) =>
-			callTool(clientSource, (client) => client.queryMessageHistory(input)),
+		(input) => callTool(clientSource, (client) => client.listMessages(input)),
 	)
 
 	server.registerTool(
@@ -53,7 +59,7 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
 		{
 			title: 'Read message updates',
 			description:
-				'Read messages forward from an updates cursor; persist the returned cursor in the caller.',
+				'Read message changes forward from a saved cursor until hasMore is false; merge messages by id and revision. Without a cursor it returns no items and a tail cursor. Persist nextCursor in the caller.',
 			inputSchema: {
 				conversationId: z.string().min(1),
 				cursor: z.string().min(1).optional(),
@@ -61,7 +67,22 @@ export const createWbotMcpServer = (clientSource: PlatformClientSource) => {
 			},
 			annotations: READ_ONLY,
 		},
-		(input) => callTool(clientSource, (client) => client.queryMessages(input)),
+		(input) => callTool(clientSource, (client) => client.listChanges(input)),
+	)
+
+	server.registerTool(
+		'get_message',
+		{
+			title: 'Get message',
+			description:
+				'Get the latest projection of one message, with a freshly signed attachment URL.',
+			inputSchema: {
+				conversationId: z.string().min(1),
+				messageId: z.string().min(1),
+			},
+			annotations: READ_ONLY,
+		},
+		(input) => callTool(clientSource, (client) => client.getMessage(input)),
 	)
 
 	return server

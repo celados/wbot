@@ -16,20 +16,20 @@ wbot auth set
 wbot @schema
 ```
 
-For internal dogfood against the test deployment, explicitly select its HTTP Actions origin:
+The CLI connects to `https://wbot-api-test.celados.com` by default; set `WBOT_PLATFORM_URL` only to
+select another conformant Platform:
 
 ```sh
-WBOT_PLATFORM_URL=https://wbot-api-test.celados.com \
-  wbot conversations.list '{ "limit": 50 }'
+wbot accounts.list
+wbot conversations.list
 ```
 
 See [the package README](packages/wbot/README.md) for CLI, MCP, credential, and cursor semantics, and
 the package [changelog](packages/wbot/CHANGELOG.md) for release and migration notes.
 
-Conversation results expose the Tenant's `read` and `send` capabilities. Conversation and message
-update results also expose capture freshness, allowing Agents to distinguish quiet conversations
-from delayed, unavailable, or insufficient capture evidence without accessing private operator
-diagnostics.
+Conversation results expose the Tenant's `read` and `send` capabilities. `accounts.list` exposes
+capture freshness per account, allowing Agents to distinguish quiet conversations from delayed,
+unavailable, or insufficient capture evidence without accessing private operator diagnostics.
 
 The CLI also supports `wbot messages.send` and `wbot outbound-sends.get`. See
 [text sending](packages/wbot/README.md#send-text-from-the-cli) for caller-owned idempotency and
@@ -37,18 +37,18 @@ send-result semantics. MCP and Plugin tools remain read-only.
 
 ## Public endpoints
 
-The Agent CLI and MCP use the production HTTP Actions origin
-`https://wbot-api-prod.celados.com`. `https://wbot-cloud-prod.celados.com` is
-the separate Convex API/WebSocket origin for browser clients and is not a CLI
-or MCP base URL. Internal test dogfood explicitly sets `WBOT_PLATFORM_URL` to
-`https://wbot-api-test.celados.com`; no test-specific command is published.
+The Agent CLI and MCP default to the HTTP Actions origin `https://wbot-api-test.celados.com`, which
+serves `/platform/v2` and is where API keys are issued. `https://wbot-api-prod.celados.com` still
+serves only `/platform/v1`, so current releases do not work against it. `wbot-cloud-test.celados.com`
+and `wbot-cloud-prod.celados.com` are Convex API/WebSocket origins for browser clients and are not
+CLI or MCP base URLs.
 
 ## Platform API v2
 
-[docs/platform-v2.md](docs/platform-v2.md) documents `/platform/v2` for direct HTTP integrations.
-It covers accounts, conversations, the timeline, the per-conversation change log, text sends and
-the SSE doorbell. v2 is live on the test Platform only. The CLI and MCP still use the frozen
-`/platform/v1`.
+[docs/platform-v2.md](docs/platform-v2.md) documents `/platform/v2`: accounts, conversations, the
+timeline, the per-conversation change log, text sends and the SSE doorbell. From 0.4.0-rc.3 the CLI
+and MCP use v2 for every read and for text sends. JPEG image send and webhook management are not in
+v2 yet and still call the frozen `/platform/v1`.
 
 ## Development
 

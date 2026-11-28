@@ -54,9 +54,11 @@ describe('功能 1：外部用户只看到一个产品入口', () => {
 		const result = await runCli(['@schema'])
 
 		expect(result.exitCode, result.stderr).toBe(0)
+		expect(result.stdout).toContain('### accounts.list')
 		expect(result.stdout).toContain('### conversations.list')
 		expect(result.stdout).toContain('### messages.history')
 		expect(result.stdout).toContain('### messages.updates')
+		expect(result.stdout).toContain('### messages.get')
 		expect(result.stdout).toContain('### mcp')
 		expect(result.stdout).toContain('### messages.send')
 		expect(result.stdout).toContain('outbound-sends')
@@ -69,6 +71,8 @@ describe('功能 1：外部用户只看到一个产品入口', () => {
 		const result = await fixture.client.listTools()
 
 		expect(result.tools.map((tool) => tool.name).sort()).toEqual([
+			'get_message',
+			'list_accounts',
 			'list_conversations',
 			'read_message_history',
 			'read_message_updates',
@@ -81,18 +85,15 @@ describe('功能 1：外部用户只看到一个产品入口', () => {
 })
 
 describe('功能 2：环境选择不扩张公开命令面', () => {
-	test('场景 2.1：默认连接生产服务', async () => {
+	test('场景 2.1：默认连接 wbot-api-test 公开服务', async () => {
 		const config = await resolveWbotConfig(createFixture().environment)
 
+		expect(DEFAULT_WBOT_PLATFORM_URL).toBe('https://wbot-api-test.celados.com')
 		expect(config.baseUrl).toBe(DEFAULT_WBOT_PLATFORM_URL)
 	})
 
-	test('场景 2.2：内部 dogfood 显式连接测试服务', async () => {
-		const platformUrl = await createPlatformServer(200, {
-			items: [],
-			nextCursor: 'next-conversation',
-			hasMore: false,
-		})
+	test('场景 2.2：WBOT_PLATFORM_URL 显式覆盖 endpoint', async () => {
+		const platformUrl = await createPlatformServer(200, { items: [] })
 		const fixture = createFixture({
 			environment: { WBOT_PLATFORM_URL: platformUrl },
 		})
@@ -105,20 +106,12 @@ describe('功能 2：环境选择不扩张公开命令面', () => {
 		})
 
 		expect(cliResult.exitCode, cliResult.stderr).toBe(0)
-		expect(JSON.parse(cliResult.stdout)).toEqual({
-			items: [],
-			nextCursor: 'next-conversation',
-			hasMore: false,
-		})
+		expect(JSON.parse(cliResult.stdout)).toEqual({ items: [] })
 		expect(mcpResult.isError, JSON.stringify(mcpResult)).not.toBe(true)
 		expect(mcpResult.content).toEqual([
 			{
 				type: 'text',
-				text: JSON.stringify(
-					{ items: [], nextCursor: 'next-conversation', hasMore: false },
-					null,
-					2,
-				),
+				text: JSON.stringify({ items: [] }, null, 2),
 			},
 		])
 		await mcp.close()

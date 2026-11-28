@@ -72,17 +72,17 @@ async function drain() {
 			])
 			if (exit !== 0) throw new Error('messages.updates failed')
 			const page = JSON.parse(output) as {
-				items: { messageId: string; revision?: number }[]
+				items: { message: { id: string; revision: number } }[]
 				nextCursor: string
 				hasMore: boolean
 			}
 			// Demonstration processing: persist IDs/revisions only. Replace this transaction with your
 			// durable business processing/outbox, preserving atomic checkpoint advancement.
 			db.transaction(() => {
-				for (const message of page.items) {
+				for (const { message } of page.items) {
 					db.query(
 						'INSERT INTO projections VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET revision=MAX(revision, excluded.revision)',
-					).run(message.messageId, message.revision ?? 0)
+					).run(message.id, message.revision)
 				}
 				db.query(
 					'UPDATE checkpoint SET cursor=?, pending=MAX(pending, ?) WHERE id=1',

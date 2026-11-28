@@ -15,7 +15,7 @@ wbot 的公开 HTTPS 接口、飞书群机器人、Slack Incoming Webhook。不�
 手机需 Android 15 或更新版本。选择出口、填写配置、授权短信读取，点击“保存并开启”。
 微信需要 API origin、Tenant API Key、目标 conversationId；该会话须有 send grant。
 Slack 使用绑定单一频道的 Incoming Webhook，不经过 slack-relay，也不保存 Slack Bot token。
-默认公共 origin 为 `https://wbot-api-prod.celados.com`，本次手机明确配置在现有 test 环境。
+默认公共 origin 为 `https://wbot-api-test.celados.com`。发送仍走冻结但受支持的 `/platform/v1`（v1 在该 origin 上继续提供），尚未迁移到 `/platform/v2`。
 飞书需要群自定义机器人 Webhook，正文含“短信转发”，可设为机器人关键词；不支持机器人签名。
 
 凭据仅保存在应用私有配置，不写日志、不进入备份或设备迁移。配置修改前先停止；

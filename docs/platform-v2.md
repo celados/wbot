@@ -12,9 +12,10 @@ description: >
 built on the same facts as `/platform/v1`. v1 is frozen and receives bug fixes only; see
 [versioning](adr/0001-versioning-and-platform-compatibility.md) for how majors evolve and retire.
 
-> **Availability.** v2 is live on the test Platform `https://wbot-api-test.celados.com` only.
-> Production (`https://wbot-api-prod.celados.com`) still serves v1 only. The `wbot` CLI and MCP
-> still call v1; this page is for integrations that call HTTP directly.
+> **Availability.** v2 is live on `https://wbot-api-test.celados.com`, the default origin of the
+> `wbot` CLI and MCP. `https://wbot-api-prod.celados.com` still serves v1 only. The CLI and MCP use
+> v2 from 0.4.0-rc.3 for every read and for text sends; JPEG image send and webhook management are
+> not in v2 yet and still call v1.
 
 ## What changed from v1
 
@@ -38,7 +39,8 @@ Webhooks remain on v1 (`/platform/v1/webhooks/*`). Image sending remains on v1.
 - Success bodies are JSON. Errors are `{ "error": { "code": "...", "message": "..." } }`. Branch
   on `code` only, never on `message`. Codes: `unauthorized` (401), `forbidden` (403), `not_found`
   (404), `invalid_request` / `invalid_cursor` / `unsupported_cursor_version` (400), `conflict`
-  (409), `rate_limited` (429), `internal_error` (500).
+  (409), `rate_limited` (429), `internal_error` (500), and `upstream_error` (502) when
+  `GET /events` cannot open its stream.
 - An unknown path or method returns a plain-text 404, not JSON.
 - Cursors are opaque strings, bound to one tenant and one conversation. Pass back only a
   `nextCursor` the Platform returned. A hand-built value such as a timestamp is rejected.
@@ -115,7 +117,12 @@ type Message = {
 - `mini_program`: `title`, `appId`, `username`, `pagePath`, `thumbnailUrl`
 - `nudge`: `suffix`, `target: Identity | null`
 - `group_invitation`: `members: Identity[]`
+- `unknown`: `preview` — a message type the Platform itself could not classify. A quote whose
+  original content is missing also arrives as `{ "kind": "unknown", "preview": "" }`.
 - `image`, `audio`, `video`, `emoji`, `location`: no extra fields
+
+String fields such as `text`, `filename` and `title` may be `null` when the device did not report
+them.
 
 Treat an unknown `kind` as unsupported and keep the record. Do not drop it or fail the page.
 
@@ -191,11 +198,12 @@ Returns one `Conversation`. Without a read grant it returns 403.
 
 Timeline snapshot in ingest order, returned as `{ items: Message[], nextCursor: string | null, hasMore }`.
 
-- `limit` is 1–100.
+- `limit` is 1–100 and defaults to 50.
 - Use at most one of `before` and `after`.
 - With no cursor you get the newest page. `before=<nextCursor>` pages toward older messages.
-- `after=<cursor>` pages toward newer messages. When an `after` page is empty, `nextCursor` is
-  `null`; keep the cursor you already had.
+- `after=<cursor>` pages toward newer messages.
+- `nextCursor` is `null` whenever the page is empty, for example an empty conversation or an empty
+  `after` page. After an empty `after` page, keep the cursor you already had.
 - Within a page, `items` are always oldest first.
 
 This is for context and backfill. To follow new activity, use `changes`.
@@ -219,6 +227,7 @@ type Change = {
 }
 ```
 
+- `limit` is 1–100 and defaults to 50.
 - Without `cursor` the call returns no items and a `nextCursor` at the current tail. Store it,
   then read forward from it. Use `messages` if you need backlog before that point.
 - With `cursor`, the call returns changes after it in `sequence` order. Read until
