@@ -270,6 +270,14 @@ test.each([
 	{ command: 'webhooks.update', input: { webhookId: 'wh_123' } },
 	{
 		command: 'webhooks.update',
+		input: {
+			webhookId: 'wh_123',
+			rotateSecret: false,
+			signingSecretEnv: 'NEXT_SIGNING_SECRET',
+		},
+	},
+	{
+		command: 'webhooks.update',
 		input: { webhookId: 'wh_123', url: 'http://example.com' },
 	},
 ])(

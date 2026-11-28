@@ -251,6 +251,11 @@ const runWbotCli = async () => {
 						signingSecretEnv,
 					} = args.input
 					if (url !== undefined) assertValidWebhookUrl(url)
+					if (rotateSecret === false && signingSecretEnv !== undefined) {
+						throw new Error(
+							'rotateSecret: false cannot be combined with signingSecretEnv',
+						)
+					}
 					const shouldRotate =
 						rotateSecret === true || signingSecretEnv !== undefined
 					const signingSecret = shouldRotate
