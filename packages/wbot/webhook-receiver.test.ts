@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 
-test('receiver persists cursor across restart and keeps a wake-up arriving during a drain', async () => {
+test('receiver persists multi-conversation cursors across restart and keeps a wake-up arriving during a drain', async () => {
 	const root = await mkdtemp(join(tmpdir(), 'wbot-receiver-test-'))
 	const portServer = createServer()
 	await new Promise<void>((resolve) =>
@@ -15,17 +15,30 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 	const address = portServer.address()
 	if (!address || typeof address === 'string') throw new Error('No port')
 	await new Promise<void>((resolve) => portServer.close(() => resolve()))
-	const secret = 's'.repeat(43),
-		log = join(root, 'queries.jsonl'),
-		executable = join(root, 'fake-wbot')
+	const secret = 's'.repeat(43)
+	const log = join(root, 'queries.jsonl')
+	const executable = join(root, 'fake-wbot')
 	await writeFile(
 		executable,
-		`#!/usr/bin/env bun\nimport { appendFileSync } from 'node:fs';\nconst input=JSON.parse(process.argv[3]);\nappendFileSync(process.env.QUERY_LOG, JSON.stringify(input)+'\\n');\nif(input.cursor==='one') await Bun.sleep(400);\nconst cursor=input.cursor ? 'two':'one';\nconsole.log(JSON.stringify({items:input.cursor==='two'?[]:[{sequence:1,kind:"message.created",occurredAtMs:1,message:{id:cursor,revision:0}}],nextCursor:cursor,hasMore:false}));\n`,
+		`#!/usr/bin/env bun
+import { appendFileSync } from 'node:fs';
+const input = JSON.parse(process.argv[3]);
+appendFileSync(process.env.QUERY_LOG, JSON.stringify(input) + '\\n');
+if (input.conversationId === 'room-a' && input.cursor === 'room-a:one') await Bun.sleep(400);
+const cursor = input.cursor ? input.conversationId + ':two' : input.conversationId + ':one';
+console.log(JSON.stringify({
+	items: input.cursor === input.conversationId + ':two'
+		? []
+		: [{ sequence: 1, kind: 'message.created', occurredAtMs: 1, message: { id: cursor, conversationId: input.conversationId, revision: 0 } }],
+	nextCursor: cursor,
+	hasMore: false,
+}));
+`,
 		{ mode: 0o700 },
 	)
 	const environment = {
 		...process.env,
-		WBOT_CONVERSATION_ID: 'room',
+		WBOT_CONVERSATION_IDS: 'room-a',
 		WBOT_WEBHOOK_SIGNING_SECRET: secret,
 		WBOT_WEBHOOK_DB: join(root, 'state.sqlite'),
 		WBOT_BIN: executable,
@@ -47,7 +60,10 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 			return (await readFile(log, 'utf8'))
 				.trim()
 				.split('\n')
-				.map((line) => JSON.parse(line) as { cursor?: string })
+				.map(
+					(line) =>
+						JSON.parse(line) as { conversationId: string; cursor?: string },
+				)
 		} catch {
 			return []
 		}
@@ -69,12 +85,17 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 			})
 		}
 	}
-	const notify = async () => {
+	const notify = async (
+		conversationId: string,
+		eventId: string,
+		reasons: ('message' | 'retraction' | 'attachment')[] = ['message'],
+	) => {
 		const body = JSON.stringify({
-			version: 1,
-			type: 'messages.available',
-			eventId: 'duplicate-event',
-			conversationId: 'room',
+			version: 2,
+			type: 'conversation.updated',
+			eventId,
+			conversationId,
+			reasons,
 			createdAtMs: Date.now(),
 		})
 		const timestamp = String(Math.floor(Date.now() / 1000))
@@ -83,7 +104,7 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 			body,
 			headers: {
 				'Switchboard-Timestamp': timestamp,
-				'Switchboard-Event-Id': 'duplicate-event',
+				'Switchboard-Event-Id': eventId,
 				'Switchboard-Signature': `v1=${createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex')}`,
 			},
 		})
@@ -93,18 +114,45 @@ test('receiver persists cursor across restart and keeps a wake-up arriving durin
 		child = start()
 		await until(async () => (await queries()).length >= 1)
 		await new Promise((resolve) => setTimeout(resolve, 100))
-		await notify()
-		await until(async () => (await queries()).some((q) => q.cursor === 'one'))
-		await notify()
-		await until(async () => (await queries()).some((q) => q.cursor === 'two'))
+		await notify('room-a', 'evt-a-1', ['message'])
+		await until(async () =>
+			(await queries()).some(
+				(q) => q.conversationId === 'room-a' && q.cursor === 'room-a:one',
+			),
+		)
+		// Second wake-up arrives while room-a is draining; room-b arrives dynamically.
+		await notify('room-a', 'evt-a-2', ['retraction'])
+		await notify('room-b', 'evt-b-1', ['attachment'])
+		await until(async () => {
+			const all = await queries()
+			return (
+				all.some(
+					(q) => q.conversationId === 'room-a' && q.cursor === 'room-a:two',
+				) && all.some((q) => q.conversationId === 'room-b')
+			)
+		})
 		await new Promise((resolve) => setTimeout(resolve, 100))
 		await stop()
 		const before = (await queries()).length
 		child = start()
-		await until(async () => (await queries()).length > before)
-		expect((await queries())[before]?.cursor).toBe('two')
+		await until(async () => (await queries()).length >= before + 2)
+		const afterRestart = (await queries()).slice(before)
+		expect(afterRestart).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					conversationId: 'room-a',
+					cursor: 'room-a:two',
+				}),
+				expect.objectContaining({
+					conversationId: 'room-b',
+					cursor: 'room-b:one',
+				}),
+			]),
+		)
 		expect(
-			(await queries()).filter((q) => q.cursor === undefined),
+			(await queries()).filter(
+				(q) => q.conversationId === 'room-a' && q.cursor === undefined,
+			),
 		).toHaveLength(1)
 	} finally {
 		await stop()

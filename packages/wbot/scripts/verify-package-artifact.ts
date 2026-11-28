@@ -115,6 +115,12 @@ try {
 		'### messages.send',
 		'imagePath',
 		'outbound-sends',
+		'### webhooks.create',
+		'### webhooks.list',
+		'### webhooks.get',
+		'### webhooks.update',
+		'### webhooks.retry',
+		'### webhooks.delete',
 		'### mcp',
 	]) {
 		if (!schema.stdout.includes(command)) {

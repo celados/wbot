@@ -1,6 +1,6 @@
 {
 	"name": "wbot",
-	"version": "0.4.0-rc.3",
+	"version": "0.4.0-rc.4",
 	"description": "Read authorized WeChat conversations through wbot.",
 	"author": {
 		"name": "Celados"

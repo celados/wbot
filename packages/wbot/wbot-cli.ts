@@ -18,6 +18,7 @@ import { runWbotMcpServer } from './wbot-mcp'
 
 const schema = toStandardJsonSchema
 const nonEmptyString = v.pipe(v.string(), v.minLength(1))
+const envVarName = v.pipe(v.string(), v.regex(/^[A-Za-z_][A-Za-z0-9_]*$/))
 const limit = v.optional(
 	v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)),
 	50,
@@ -42,38 +43,63 @@ const outboundSendGetInput = v.strictObject({
 	outboundSendId: nonEmptyString,
 })
 
-const webhookIdentityInput = v.strictObject({ conversationId: nonEmptyString })
-const webhookConfigureInput = v.strictObject({
-	conversationId: nonEmptyString,
+const webhookConversationIdsInput = v.nullable(
+	v.pipe(v.array(nonEmptyString), v.minLength(1), v.maxLength(100)),
+)
+const webhookIdInput = v.strictObject({ webhookId: nonEmptyString })
+const webhookCreateInput = v.strictObject({
 	url: v.pipe(nonEmptyString, v.maxLength(2048)),
-	signingSecretEnv: v.optional(
-		v.pipe(v.string(), v.regex(/^[A-Za-z_][A-Za-z0-9_]*$/)),
-		'WBOT_WEBHOOK_SIGNING_SECRET',
-	),
+	conversationIds: v.optional(webhookConversationIdsInput),
+	signingSecretEnv: v.optional(envVarName, 'WBOT_WEBHOOK_SIGNING_SECRET'),
+})
+const webhookUpdateInput = v.strictObject({
+	webhookId: nonEmptyString,
+	url: v.optional(v.pipe(nonEmptyString, v.maxLength(2048))),
+	conversationIds: v.optional(webhookConversationIdsInput),
+	status: v.optional(v.picklist(['active', 'disabled'])),
+	rotateSecret: v.optional(v.boolean()),
+	signingSecretEnv: v.optional(envVarName),
+})
+const webhookRetryInput = v.strictObject({
+	webhookId: nonEmptyString,
+	conversationId: v.optional(nonEmptyString),
 })
 
 const commands = {
 	webhooks: group(
-		{ description: 'Manage incoming-message HTTPS wake-up subscriptions' },
+		{ description: 'Manage Platform v2 HTTPS doorbell webhook endpoints' },
 		{
-			configure: c
+			create: c
 				.meta({
 					description:
-						'Configure one conversation webhook; read its signing secret from an environment variable',
+						'Create a webhook endpoint (omit conversationIds for all read-granted conversations); read signing secret from an environment variable',
 				})
-				.input(schema(webhookConfigureInput)),
+				.input(schema(webhookCreateInput)),
 			list: c.meta({
-				description: 'List webhook configuration and latest delivery status',
+				description:
+					'List webhook endpoints and derived delivery health summaries',
 			}),
-			remove: c
-				.meta({ description: 'Remove a conversation webhook' })
-				.input(schema(webhookIdentityInput)),
+			get: c
+				.meta({
+					description:
+						'Get one webhook endpoint with per-conversation delivery states',
+				})
+				.input(schema(webhookIdInput)),
+			update: c
+				.meta({
+					description:
+						'Update URL, conversationIds, status, or rotate the signing secret from an environment variable',
+				})
+				.input(schema(webhookUpdateInput)),
 			retry: c
 				.meta({
 					description:
-						'Retry failed or cancelled notification work; does not consume messages',
+						'Retry failed or cancelled deliveries on a webhook endpoint; does not consume messages',
 				})
-				.input(schema(webhookIdentityInput)),
+				.input(schema(webhookRetryInput)),
+			delete: c
+				.meta({ description: 'Delete a webhook endpoint' })
+				.input(schema(webhookIdInput)),
 		},
 	),
 	auth: group(
@@ -157,6 +183,36 @@ const app = cli(commands, {
 		'Read WeChat conversations and send authorized text or JPEG images through wbot',
 })
 
+const assertValidWebhookUrl = (rawUrl: string): void => {
+	let url: URL
+	try {
+		url = new URL(rawUrl)
+	} catch {
+		throw new Error('Webhook URL must be valid HTTPS')
+	}
+	if (
+		url.protocol !== 'https:' ||
+		url.username ||
+		url.password ||
+		url.hash ||
+		(url.port && url.port !== '443')
+	) {
+		throw new Error(
+			'Webhook URL must use HTTPS port 443 without credentials or fragments',
+		)
+	}
+}
+
+const readWebhookSigningSecret = (envName: string): string => {
+	const signingSecret = process.env[envName]
+	if (!signingSecret || !/^[A-Za-z0-9_-]{43,128}$/.test(signingSecret)) {
+		throw new Error(
+			'Webhook signing secret environment variable must contain 43–128 base64url characters.',
+		)
+	}
+	return signingSecret
+}
+
 const runWbotCli = async () => {
 	const callPlatform = async <Result>(
 		operation: (client: WbotClient) => Promise<Result>,
@@ -165,49 +221,77 @@ const runWbotCli = async () => {
 	await app.run({
 		handlers: {
 			webhooks: {
-				configure: async (args) => {
-					const { signingSecretEnv, ...input } = args.input
-					let url: URL
-					try {
-						url = new URL(input.url)
-					} catch {
-						throw new Error('Webhook URL must be valid HTTPS')
-					}
-					if (
-						url.protocol !== 'https:' ||
-						url.username ||
-						url.password ||
-						url.hash ||
-						(url.port && url.port !== '443')
-					) {
-						throw new Error(
-							'Webhook URL must use HTTPS port 443 without credentials or fragments',
-						)
-					}
-					const signingSecret = process.env[signingSecretEnv]
-					if (
-						!signingSecret ||
-						!/^[A-Za-z0-9_-]{43,128}$/.test(signingSecret)
-					) {
-						throw new Error(
-							'Webhook signing secret environment variable must contain 43–128 base64url characters.',
-						)
-					}
+				create: async (args) => {
+					const { signingSecretEnv, url, conversationIds } = args.input
+					assertValidWebhookUrl(url)
+					const signingSecret = readWebhookSigningSecret(signingSecretEnv)
 					return JSON.stringify(
 						await callPlatform((client) =>
-							client.configureWebhook({ ...input, signingSecret }),
+							client.createWebhook({
+								url,
+								signingSecret,
+								...(conversationIds === undefined ? {} : { conversationIds }),
+							}),
 						),
 					)
 				},
 				list: async () =>
 					JSON.stringify(await callPlatform((client) => client.listWebhooks())),
-				remove: async (args) =>
+				get: async (args) =>
 					JSON.stringify(
-						await callPlatform((client) => client.removeWebhook(args.input)),
+						await callPlatform((client) => client.getWebhook(args.input)),
 					),
+				update: async (args) => {
+					const {
+						webhookId,
+						url,
+						conversationIds,
+						status,
+						rotateSecret,
+						signingSecretEnv,
+					} = args.input
+					if (url !== undefined) assertValidWebhookUrl(url)
+					if (rotateSecret === false && signingSecretEnv !== undefined) {
+						throw new Error(
+							'rotateSecret: false cannot be combined with signingSecretEnv',
+						)
+					}
+					const shouldRotate =
+						rotateSecret === true || signingSecretEnv !== undefined
+					const signingSecret = shouldRotate
+						? readWebhookSigningSecret(
+								signingSecretEnv ?? 'WBOT_WEBHOOK_SIGNING_SECRET',
+							)
+						: undefined
+					if (
+						url === undefined &&
+						conversationIds === undefined &&
+						status === undefined &&
+						signingSecret === undefined
+					) {
+						throw new Error(
+							'Specify at least one field to update (url, conversationIds, status, rotateSecret, or signingSecretEnv)',
+						)
+					}
+					return JSON.stringify(
+						await callPlatform((client) =>
+							client.updateWebhook({
+								webhookId,
+								...(url === undefined ? {} : { url }),
+								...(conversationIds === undefined ? {} : { conversationIds }),
+								...(status === undefined ? {} : { status }),
+								...(signingSecret === undefined ? {} : { signingSecret }),
+							}),
+						),
+					)
+				},
 				retry: async (args) =>
 					JSON.stringify(
 						await callPlatform((client) => client.retryWebhook(args.input)),
+					),
+				delete: async (args) =>
+					JSON.stringify(
+						await callPlatform((client) => client.deleteWebhook(args.input)),
 					),
 			},
 			auth: {

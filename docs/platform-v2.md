@@ -3,7 +3,7 @@ type: Reference
 title: Platform API v2
 description: >
   HTTP reference for /platform/v2: accounts, conversations, the message timeline, the
-  per-conversation change log, text sends, outbound-send status, and the SSE doorbell.
+  per-conversation change log, text sends, outbound-send status, webhooks, and the SSE doorbell.
 ---
 
 # Platform API v2
@@ -13,24 +13,26 @@ built on the same facts as `/platform/v1`. v1 is frozen and receives bug fixes o
 [versioning](adr/0001-versioning-and-platform-compatibility.md) for how majors evolve and retire.
 
 > **Availability.** v2 is live on `https://wbot-api-test.celados.com`, the default origin of the
-> `wbot` CLI and MCP. `https://wbot-api-prod.celados.com` still serves v1 only. The CLI and MCP use
-> v2 from 0.4.0-rc.3 for every read and for text sends; JPEG image send and webhook management are
-> not in v2 yet and still call v1.
+> `wbot` CLI and MCP. `https://wbot-api-prod.celados.com` still serves v1 only. From `0.4.0-rc.4`
+> the CLI and MCP use v2 for every read, text sends, and webhook management; only JPEG image send
+> remains on v1.
 
 ## What changed from v1
 
-| Concern            | v1                                                   | v2                                                                    |
-| ------------------ | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| Style              | `POST /<noun>/<verb>` with JSON bodies               | `GET` / `POST` on resources; reads take query parameters              |
-| Time and sizes     | Mix of strings and numbers                           | Always numbers (epoch milliseconds, bytes)                            |
-| Retraction         | Fake content kind `retracted`                        | `state: "retracted"`, `retractedAtMs`, `content: null`                |
-| Capture freshness  | Repeated on every conversation and updates page      | Once per account on `GET /accounts`                                   |
-| Late attachments   | `pending` was never announced again                  | `message.attachment_ready` change and an `attachment` doorbell reason |
-| Expired media URLs | Re-read a whole page                                 | `GET .../messages/{id}` signs a fresh URL                             |
-| Send idempotency   | `requestId` in the body; replay always said `queued` | `Idempotency-Key` header; replay returns the current send             |
-| Mentions           | Not exposed                                          | `mentions`, `mentionsAll`, `mentionsSelf` on every message            |
+| Concern            | v1                                                     | v2                                                                            |
+| ------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Style              | `POST /<noun>/<verb>` with JSON bodies                 | `GET` / `POST` / `PATCH` / `DELETE` on resources; reads take query parameters |
+| Time and sizes     | Mix of strings and numbers                             | Always numbers (epoch milliseconds, bytes)                                    |
+| Retraction         | Fake content kind `retracted`                          | `state: "retracted"`, `retractedAtMs`, `content: null`                        |
+| Capture freshness  | Repeated on every conversation and updates page        | Once per account on `GET /accounts`                                           |
+| Late attachments   | `pending` was never announced again                    | `message.attachment_ready` change and an `attachment` doorbell reason         |
+| Expired media URLs | Re-read a whole page                                   | `GET .../messages/{id}` signs a fresh URL                                     |
+| Send idempotency   | `requestId` in the body; replay always said `queued`   | `Idempotency-Key` header; replay returns the current send                     |
+| Mentions           | Not exposed                                            | `mentions`, `mentionsAll`, `mentionsSelf` on every message                    |
+| Webhooks           | Per-conversation RPCs (removed), inbound messages only | Endpoint-level REST `/webhooks`, optional filter, all 3 change reasons        |
 
-Webhooks remain on v1 (`/platform/v1/webhooks/*`). Image sending remains on v1.
+Only JPEG image sending remains on v1 (`/platform/v1/messages/send`). v1 webhook routes have been
+removed.
 
 ## Conventions
 
@@ -50,11 +52,11 @@ Webhooks remain on v1 (`/platform/v1/webhooks/*`). Image sending remains on v1.
 
 v2 shares the v1 per-key budgets.
 
-| Category | Endpoints                                                                        | Limit per key |
-| -------- | -------------------------------------------------------------------------------- | ------------- |
-| List     | `GET /accounts`, `GET /conversations`                                            | 30/min        |
-| Read     | `GET /conversations/{id}`, `.../messages`, `.../changes`, `/outbound-sends/{id}` | 300/min       |
-| Send     | `POST /conversations/{id}/messages`                                              | 60/min        |
+| Category | Endpoints                                                                                                                                              | Limit per key |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| List     | `GET /accounts`, `GET /conversations`, `GET /webhooks`, `POST /webhooks`, `PATCH /webhooks/{id}`, `DELETE /webhooks/{id}`, `POST /webhooks/{id}/retry` | 30/min        |
+| Read     | `GET /conversations/{id}`, `.../messages`, `.../changes`, `/outbound-sends/{id}`, `GET /webhooks/{id}`                                                 | 300/min       |
+| Send     | `POST /conversations/{id}/messages`                                                                                                                    | 60/min        |
 
 A 429 carries `Retry-After` (seconds) and `error.retryAfterMs`, and is rejected before any work
 happens. `GET /events` is not metered per request. A tenant can hold at most 20 concurrent event
@@ -304,13 +306,98 @@ data: {"version":2,"type":"conversation.updated","eventId":"evt_...","conversati
 - The doorbell is a hint, not a delivery guarantee. Correctness comes from the `changes` cursor.
   After any gap, read `changes` from your saved cursor.
 
+### Webhooks (`/platform/v2/webhooks`)
+
+Signed HTTPS doorbells for integrations that prefer push delivery over holding an SSE stream.
+Webhooks are configured at the **endpoint** level rather than one per conversation: a single
+endpoint can receive wake-ups for every conversation the tenant can read (`conversationIds: null`),
+or for an explicit allowlist of up to 100 conversations.
+
+```ts
+type WebhookDeliverySummary = {
+	health: 'idle' | 'healthy' | 'degraded' | 'failing'
+	pendingCount: number
+	failedCount: number
+	lastDeliveredAtMs: number | null
+	lastError: string | null
+}
+
+type WebhookEndpointSummary = {
+	id: string
+	url: string
+	status: 'active' | 'disabled'
+	conversationIds: string[] | null // null means all readable conversations
+	createdAtMs: number
+	updatedAtMs: number
+	summary: WebhookDeliverySummary
+}
+
+type WebhookDeliveryState = {
+	conversationId: string
+	status: 'idle' | 'pending' | 'sending' | 'failed' | 'cancelled'
+	attempts: number
+	lastError: string | null
+	lastDeliveredAtMs: number | null
+	nextAttemptAtMs: number | null
+}
+
+type WebhookEndpointDetail = WebhookEndpointSummary & {
+	deliveries: WebhookDeliveryState[]
+}
+```
+
+Endpoints:
+
+- `POST /platform/v2/webhooks` (201) — Create an endpoint. Body:
+  `{ url, signingSecret, conversationIds? }`. `url` must be a public HTTPS URL on port 443 (no
+  credentials, fragments, or private/reserved hosts). `signingSecret` is caller-generated (32–256
+  characters, `[A-Za-z0-9._~-]+`) and is never echoed in responses. `conversationIds` may be omitted
+  or `null` for all readable conversations, or a non-empty array of up to 100 conversation IDs (each
+  must have an active `read` grant). Tenants may hold up to 5 endpoints.
+- `GET /platform/v2/webhooks` (200) — List endpoints for the calling tenant:
+  `{ items: WebhookEndpointSummary[] }`.
+- `GET /platform/v2/webhooks/{id}` (200) — Inspect one endpoint and its per-conversation delivery
+  states: `WebhookEndpointDetail`. Returns 404 for unknown or other tenants' endpoints.
+- `PATCH /platform/v2/webhooks/{id}` (200) — Update one or more of `url`, `signingSecret`,
+  `conversationIds`, or `status` (`"active"` or `"disabled"`). Changing `url` or `signingSecret`
+  bumps the endpoint generation so in-flight responses from prior attempts are ignored and pending
+  work re-notifies with the new settings. Narrowing `conversationIds` prunes removed conversations'
+  delivery states.
+- `DELETE /platform/v2/webhooks/{id}` (200) — Delete an endpoint and its delivery state:
+  `{ deleted: true }`.
+- `POST /platform/v2/webhooks/{id}/retry` (200) — Requeue `failed` or `cancelled` deliveries for
+  an active endpoint. Optional body `{ conversationId? }` targets a single conversation. Returns
+  `WebhookEndpointDetail`.
+
+Delivery contract:
+
+- **Payload**: identical to `GET /platform/v2/events` — a content-free JSON object with
+  `version: 2`, `type: "conversation.updated"`, `eventId`, `conversationId`, `reasons`
+  (non-empty deduplicated subset of `message`, `retraction`, `attachment`), and `createdAtMs`.
+  All three change reasons trigger delivery.
+- **Headers**: `Content-Type: application/json`, `User-Agent: Switchboard-Webhook/2`,
+  `Switchboard-Event-Id`, `Switchboard-Timestamp` (Unix seconds), and
+  `Switchboard-Signature: v1=<hex>` where the digest is HMAC-SHA256 over
+  `${timestamp}.${rawBody}` using `signingSecret`.
+- **Coalescing & retries**: one active delivery state per `(endpoint, conversation)`. While a
+  delivery is retrying, its `eventId` and JSON body stay byte-identical across retries; newer
+  changes accumulate and emit a follow-up delivery once the current one receives 2xx. Network
+  errors and HTTP 408/429/5xx retry with exponential backoff (1 min base, 1 hour cap, 8 attempts,
+  24-hour TTL). Other non-2xx responses fail immediately. Redirects are not followed, and outbound
+  fetches enforce public-network egress (`global_fetch_strictly_public` plus URL host checks).
+- **Grant revocation**: read grants are re-verified at delivery time; if revoked, the delivery is
+  marked `cancelled` (`Read access revoked`) instead of dispatching.
+- **Derived health**: `summary.health` is computed from delivery states (`failing` if any delivery
+  is `failed`; `degraded` if any pending/sending delivery has `attempts > 0` or a `lastError`;
+  `healthy` if at least one delivery succeeded; otherwise `idle`).
+
 ## Recommended consumer loop
 
 1. Call `GET /accounts` and `GET /conversations`. For each conversation, call `GET .../changes`
    without a cursor and store the tail cursor. Backfill with `messages` if you need it.
-2. Open `GET /events`. On each event, or on a periodic sweep as a fallback, read
-   `.../changes?cursor=<saved>` until `hasMore` is false. Merge messages by `id` and `revision`,
-   then save `nextCursor`.
+2. Open `GET /events` or register a webhook with `POST /webhooks`. On each wake-up, or on a
+   periodic sweep as a fallback, read `.../changes?cursor=<saved>` until `hasMore` is false. Merge
+   messages by `id` and `revision`, then save `nextCursor`.
 3. On `message.attachment_ready` or an expired media URL, fetch `.../messages/{messageId}`.
 4. Send with a stable `Idempotency-Key`. Poll `GET /outbound-sends/{id}` until the status is
    terminal, and do not auto-retry `indeterminate`.

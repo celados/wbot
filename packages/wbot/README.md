@@ -7,9 +7,9 @@ Its MCP tools remain read-only. It ships one executable:
 
 See the [changelog](CHANGELOG.md) before upgrading across a minor version.
 
-From 0.4.0-rc.3 the CLI and MCP read and send text through [Platform API v2](../../docs/platform-v2.md).
-Two operations are not in v2 yet and still call the frozen `/platform/v1`: JPEG image send
-(`/platform/v1/messages/send`) and webhook management (`/platform/v1/webhooks/*`).
+From 0.4.0-rc.4 the CLI and MCP use [Platform API v2](../../docs/platform-v2.md) for reads, text
+sends, and webhook management. Only JPEG image send (`/platform/v1/messages/send`) remains on the
+frozen `/platform/v1`.
 
 ## Configure
 
@@ -91,11 +91,11 @@ values) describe the channel adapter.
 
 The Platform rate-limits requests per API key, per minute:
 
-| Category | Platform requests                                                              | CLI / MCP                                                                                        | Limit per key |
-| -------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------- |
-| List     | `GET /accounts`, `GET /conversations`                                          | `accounts.list`, `conversations.list`, `list_accounts`, `list_conversations`                     | 30/min        |
-| Read     | `GET .../messages`, `.../messages/{id}`, `.../changes`, `/outbound-sends/{id}` | `messages.history`, `messages.updates`, `messages.get`, `outbound-sends.get`, and MCP read tools | 300/min       |
-| Send     | `POST .../messages` (text), `/platform/v1/messages/send` (JPEG)                | `messages.send`                                                                                  | 60/min        |
+| Category | Platform requests                                                                                    | CLI / MCP                                                                                                                                    | Limit per key |
+| -------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| List     | `GET /accounts`, `GET /conversations`, `GET/POST /webhooks`, `PATCH/DELETE /webhooks/{id}`, `retry`  | `accounts.list`, `conversations.list`, `webhooks.create`, `webhooks.list`, `webhooks.update`, `webhooks.retry`, `webhooks.delete`, MCP lists | 30/min        |
+| Read     | `GET .../messages`, `.../messages/{id}`, `.../changes`, `/outbound-sends/{id}`, `GET /webhooks/{id}` | `messages.history`, `messages.updates`, `messages.get`, `outbound-sends.get`, `webhooks.get`, and MCP read tools                             | 300/min       |
+| Send     | `POST .../messages` (text), `/platform/v1/messages/send` (JPEG)                                      | `messages.send`                                                                                                                              | 60/min        |
 
 A Tenant also has an aggregate budget of three times the per-key limit, which only takes effect
 when the Tenant has more than three active keys.
@@ -112,7 +112,7 @@ code is non-zero (MCP returns a tool error). The typed `PlatformRequestError` ex
 Polling guidance:
 
 - Read new messages incrementally with `messages.updates` and the saved cursor, or configure
-  [webhooks](#incoming-message-webhooks) and read updates only when notified.
+  [webhooks](#webhooks) and read updates only when notified.
 - Do not loop over `conversations.list` to detect new messages; list conversations to discover
   them, then follow each conversation's updates cursor.
 - `messages.history` is for looking back at older context, not for polling.
@@ -244,31 +244,38 @@ An unfamiliar future content kind is returned as `unknown` with `preview: "Unsup
 and conversation previews. Known kinds still require their documented fields; malformed payloads
 remain contract errors. No records are dropped, and cursors and pagination flags are preserved.
 
-## Incoming-message webhooks
+## Webhooks
 
-Version 0.2.5 adds optional HTTPS wake-ups for newly received messages. Configure one webhook per
-read-authorized conversation. Set `WBOT_WEBHOOK_SIGNING_SECRET` to a random 32-byte base64url secret
-through your secret manager; it is distinct from `WBOT_API_KEY`.
+Manage endpoint-level HTTPS wake-ups through `/platform/v2/webhooks`. A single endpoint receives
+doorbell notifications for every readable conversation by default (`conversationIds` omitted or
+`null`), or for an explicit allowlist of up to 100 conversation IDs. Set
+`WBOT_WEBHOOK_SIGNING_SECRET` to a random 32-byte base64url secret through your secret manager; it
+is distinct from `WBOT_API_KEY`.
 
 ```sh
-wbot webhooks.configure '{"conversationId":"conversation-id","url":"https://hooks.your-domain.com/webhook"}'
+wbot webhooks.create '{"url":"https://hooks.your-domain.com/webhook"}'
+wbot webhooks.create '{"url":"https://hooks.your-domain.com/webhook","conversationIds":["conv-1","conv-2"]}'
 wbot webhooks.list
-wbot webhooks.retry '{"conversationId":"conversation-id"}'
-wbot webhooks.remove '{"conversationId":"conversation-id"}'
+wbot webhooks.get '{"webhookId":"wh_..."}'
+wbot webhooks.update '{"webhookId":"wh_...","status":"disabled"}'
+wbot webhooks.update '{"webhookId":"wh_...","rotateSecret":true,"signingSecretEnv":"NEXT_WEBHOOK_SECRET"}'
+wbot webhooks.retry '{"webhookId":"wh_..."}'
+wbot webhooks.delete '{"webhookId":"wh_..."}'
 ```
 
-`signingSecretEnv` optionally names a different environment variable. The CLI never accepts a
-plaintext signing secret argument and does not return it in successful output. HTTPS port 443 and a
-public IPv4 hostname are required. Redirects are not followed. Current limits are 20 subscriptions
-per tenant and 100 per conversation; configuration requires a read grant.
+`signingSecretEnv` optionally names a different environment variable (and implies secret rotation
+on `webhooks.update`). The CLI never accepts a plaintext signing secret argument and does not
+return signing material in output. HTTPS port 443 and a public hostname are required (private/local
+hosts and redirects are rejected). Each tenant may hold up to 5 endpoints, and every explicitly
+listed conversation ID requires a `read` grant.
 
-Notifications contain only event/conversation identity and timing, not message content. Verify the
-signature, durably accept/deduplicate the event, then call `messages.updates` from your saved cursor
-until `hasMore=false`. Only incoming new messages notify; outgoing messages and retractions remain
-queryable. A successful callback does not mean the consumer processed its messages.
-
-Webhook management is not in `/platform/v2` yet; these commands call `/platform/v1/webhooks/*`.
+Notifications carry only event identity, `conversationId`, `reasons` (subset of `message`,
+`retraction`, `attachment`), and `createdAtMs` — never message content. All three change reasons
+trigger notifications, matching `GET /platform/v2/events` (SSE). Verify the `v1=` HMAC signature
+over `${timestamp}.${rawBody}`, durably accept/deduplicate the event, then drain
+`messages.updates` for that `conversationId` from your saved cursor until `hasMore=false`. A 2xx
+response acknowledges the wake-up; it does not prove business processing.
 
 See the [Bun receiver and setup/recovery guide](https://github.com/celados/wbot/tree/main/examples/webhook)
-for HMAC verification, durable cursor handling, retry limits and setup-gap recovery. Webhook
-management is CLI-only; MCP and both plugins stay read-only.
+for HMAC verification, multi-conversation cursor handling, retry limits, and setup-gap recovery.
+Webhook management is CLI-only; MCP and both plugins stay read-only.

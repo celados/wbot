@@ -244,21 +244,46 @@ export const imageSendReceiptSchema = v.pipe(
 	})),
 )
 
-export const webhookResultSchema = v.object({
-	conversationId: v.pipe(v.string(), v.minLength(1)),
-	url: v.string(),
-	deliveryStatus: v.picklist([
-		'idle',
-		'pending',
-		'sending',
-		'failed',
-		'cancelled',
-	]),
-	attempts: count,
-	lastError: v.nullable(v.string()),
+const webhookDeliverySummarySchema = v.object({
+	health: v.picklist(['idle', 'healthy', 'degraded', 'failing']),
+	pendingCount: count,
+	failedCount: count,
 	lastDeliveredAtMs: v.nullable(epochMs),
+	lastError: nullableString,
 })
-export const webhookListResultSchema = v.object({
-	items: v.array(webhookResultSchema),
+
+const webhookDeliveryStateSchema = v.object({
+	conversationId: v.pipe(v.string(), v.minLength(1)),
+	status: v.picklist(['idle', 'pending', 'sending', 'failed', 'cancelled']),
+	attempts: count,
+	lastError: nullableString,
+	lastDeliveredAtMs: v.nullable(epochMs),
+	nextAttemptAtMs: v.nullable(epochMs),
 })
-export const webhookRemoveResultSchema = v.object({ removed: v.boolean() })
+
+export const webhookEndpointSummarySchema = v.object({
+	id: v.pipe(v.string(), v.minLength(1)),
+	url: v.string(),
+	conversationIds: v.nullable(v.array(v.pipe(v.string(), v.minLength(1)))),
+	status: v.picklist(['active', 'disabled']),
+	createdAtMs: epochMs,
+	updatedAtMs: epochMs,
+	summary: webhookDeliverySummarySchema,
+})
+
+export const webhookEndpointDetailSchema = v.object({
+	id: v.pipe(v.string(), v.minLength(1)),
+	url: v.string(),
+	conversationIds: v.nullable(v.array(v.pipe(v.string(), v.minLength(1)))),
+	status: v.picklist(['active', 'disabled']),
+	createdAtMs: epochMs,
+	updatedAtMs: epochMs,
+	summary: webhookDeliverySummarySchema,
+	deliveries: v.array(webhookDeliveryStateSchema),
+})
+
+export const webhookEndpointListSchema = v.object({
+	items: v.array(webhookEndpointSummarySchema),
+})
+
+export const webhookDeleteResultSchema = v.object({ deleted: v.boolean() })
