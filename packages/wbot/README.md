@@ -7,6 +7,9 @@ Its MCP tools remain read-only. It ships one executable:
 
 See the [changelog](CHANGELOG.md) before upgrading across a minor version.
 
+The CLI and MCP call the frozen `/platform/v1` API. Direct HTTP integrations can use
+[Platform API v2](../../docs/platform-v2.md), which is currently live on the test Platform only.
+
 ## Configure
 
 Install [Bun](https://bun.sh), then install the latest verified GitHub Release artifact:

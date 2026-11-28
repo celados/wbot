@@ -21,6 +21,8 @@ _Avoid_: Package version, CLI version, MCP version
 The independently versioned major contract of the hosted Platform API, identified by a path such
 as `/platform/v1`. An active major evolves only through compatible additions; incompatible changes
 require a new major, and retiring an old major requires an announced migration window.
+`/platform/v1` is frozen and receives bug fixes only. `/platform/v2` is the successor major, live on the test Platform; see
+[Platform API v2](docs/platform-v2.md).
 _Avoid_: Backend version, deployment version, wbot version
 
 **wbot Public Contract**:

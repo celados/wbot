@@ -43,6 +43,13 @@ the separate Convex API/WebSocket origin for browser clients and is not a CLI
 or MCP base URL. Internal test dogfood explicitly sets `WBOT_PLATFORM_URL` to
 `https://wbot-api-test.celados.com`; no test-specific command is published.
 
+## Platform API v2
+
+[docs/platform-v2.md](docs/platform-v2.md) documents `/platform/v2` for direct HTTP integrations.
+It covers accounts, conversations, the timeline, the per-conversation change log, text sends and
+the SSE doorbell. v2 is live on the test Platform only. The CLI and MCP still use the frozen
+`/platform/v1`.
+
 ## Development
 
 Development dependencies include `@celados/argc` from the private team registry `npm.celados.com`. Before `bun install`, write a gitignored `.npmrc` that maps `@celados` to that registry with the team token (template: `.npmrc.tpl` in `celados/argc`, rendered with `latch render`). CI does the same from the `NPM_TOKEN` secret. The release artifact is a bundle and needs no registry access.
