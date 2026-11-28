@@ -9,6 +9,8 @@ All notable changes to the public wbot client are documented in this file.
 First stable release on Platform API v2. It contains every change from `0.4.0-rc.1` through
 `0.4.0-rc.4`; read their Breaking Changes and Migration notes below before upgrading from 0.2.x.
 
+### Breaking Changes
+
 - Reads, text sends and webhook management use `/platform/v2`; only JPEG image sends still use
   `/platform/v1`.
 - The default Platform URL is `https://wbot-api-test.celados.com`.
