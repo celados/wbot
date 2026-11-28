@@ -46,9 +46,9 @@ CLI or MCP base URLs.
 ## Platform API v2
 
 [docs/platform-v2.md](docs/platform-v2.md) documents `/platform/v2`: accounts, conversations, the
-timeline, the per-conversation change log, text sends and the SSE doorbell. From 0.4.0-rc.3 the CLI
-and MCP use v2 for every read and for text sends. JPEG image send and webhook management are not in
-v2 yet and still call the frozen `/platform/v1`.
+timeline, the per-conversation change log, text sends, webhooks, and the SSE doorbell. From
+0.4.0-rc.4 the CLI and MCP use v2 for every read, text sends, and webhook management; only JPEG
+image send remains on the frozen `/platform/v1`.
 
 ## Development
 
@@ -76,8 +76,9 @@ After configuring `integrations/digest/.env.local`, start development from the r
 bun run digest:dev
 ```
 
-## Incoming-message notifications
+## Webhook notifications
 
-The CLI can configure signed HTTPS webhooks and consume notifications through `messages.updates`.
-See the [commands](packages/wbot/README.md#incoming-message-webhooks) and
+The CLI can manage signed HTTPS webhook endpoints (`/platform/v2/webhooks`) and consume
+conversation updates through `messages.updates`. See the
+[commands](packages/wbot/README.md#webhooks) and
 [durable receiver example](examples/webhook). MCP remains read-only.

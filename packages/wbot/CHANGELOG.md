@@ -4,6 +4,51 @@ All notable changes to the public wbot client are documented in this file.
 
 ## Unreleased
 
+## 0.4.0-rc.4 - 2026-11-28
+
+### Breaking Changes
+
+- Webhook management moves from the removed `/platform/v1/webhooks/*` RPCs to endpoint-level REST
+  `/platform/v2/webhooks`. There is no v1 fallback.
+- CLI webhook commands are replaced with `webhooks.create`, `webhooks.list`, `webhooks.get`,
+  `webhooks.update`, `webhooks.retry`, and `webhooks.delete` (removing `webhooks.configure` and
+  `webhooks.remove`). Operations now target a `webhookId` instead of a single `conversationId`.
+- Exported client webhook methods change from `configureWebhook`, `listWebhooks`, `retryWebhook`,
+  `removeWebhook` to `createWebhook`, `listWebhooks`, `getWebhook`, `updateWebhook`, `retryWebhook`,
+  and `deleteWebhook`, returning `WebhookEndpointSummary` / `WebhookEndpointDetail`.
+- Webhook delivery payloads move to v2 (`version: 2`, `type: "conversation.updated"`,
+  `reasons: Array<'message' | 'retraction' | 'attachment'>`), identical to `GET /platform/v2/events`
+  (SSE). All three change reasons now trigger webhook deliveries. `examples/webhook/verify.ts`
+  rejects v1 payloads.
+
+### Added
+
+- Endpoint-level subscriptions: one webhook endpoint can watch all readable conversations
+  (`conversationIds: null`) or an explicit allowlist of up to 100 conversations (up to 5 endpoints
+  per tenant).
+- `webhooks.get` for per-conversation delivery inspection (`deliveries[]`) and derived
+  `summary.health` (`idle`, `healthy`, `degraded`, `failing`).
+- `webhooks.update` for changing `url`, `conversationIds`, `status` (`active` / `disabled`), or
+  rotating secrets via `rotateSecret` / `signingSecretEnv`.
+- Multi-conversation SQLite checkpoint example in `examples/webhook/receiver.ts` using optional
+  `WBOT_CONVERSATION_IDS`.
+
+### Changed
+
+- `verify-platform-compatibility` now exercises `GET /platform/v2/webhooks` via `webhooks.list`.
+- Documentation updated to reflect public-network egress (`global_fetch_strictly_public` + HTTPS
+  port 443 host validation) instead of IPv4-only DNS wording.
+
+### Migration
+
+- Replace `wbot webhooks.configure` with `wbot webhooks.create '{"url":"..."}'` (optionally passing
+  `"conversationIds":[...]`), and replace `wbot webhooks.remove` with
+  `wbot webhooks.delete '{"webhookId":"..."}'`.
+- Update webhook receivers to accept `version: 2`, `type: "conversation.updated"`, and `reasons`
+  (HMAC header names and `v1=` signature calculation are unchanged).
+- Because all three change reasons trigger notifications and `messages.updates` includes outgoing
+  messages, auto-reply consumers should continue filtering on `message.direction`.
+
 ## 0.4.0-rc.3 - 2026-11-28
 
 ### Breaking Changes
