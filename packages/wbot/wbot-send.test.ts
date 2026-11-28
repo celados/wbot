@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 
+import { createOutboundSendFixture } from './platform-v2-fixtures'
+
 const cliEntry = new URL('./wbot-cli.ts', import.meta.url).pathname
 const servers: Server[] = []
 const directories: string[] = []
@@ -17,8 +19,15 @@ const input = {
 	text: 'Daily summary\n"Hello" — 你好 👋',
 	requestedBy: 'agent:grok',
 }
-const queued = {
+const queued = createOutboundSendFixture({ conversationId: 'room-1' })
+// The frozen /platform/v1 image route still answers with its v1 receipt.
+const v1ImageQueued = {
 	outboundSendId: 'send-1',
+	conversationId: 'room-1',
+	status: 'queued',
+}
+const imageReceipt = {
+	id: 'send-1',
 	conversationId: 'room-1',
 	status: 'queued',
 }
@@ -39,20 +48,33 @@ afterEach(async () => {
 	)
 })
 
-test('CLI forwards authenticated sends and caller-owned idempotency unchanged', async () => {
-	const fixture = await createFixture(200, queued)
+test('CLI sends text through v2 with requestId as the Idempotency-Key', async () => {
+	// A v2 replay returns the current send, so the second answer may have progressed.
+	const fixture = await createFixture(200, [
+		queued,
+		{ ...queued, status: 'accepted', attemptCount: 1, futureField: true },
+	])
+	const outputs = []
 	for (let attempt = 0; attempt < 2; attempt++) {
 		const result = await runCli('messages.send', input, fixture.url)
 		expect(result.exitCode, result.stderr).toBe(0)
 		expect(result.stderr).toBe('')
-		expect(JSON.parse(result.stdout)).toEqual(queued)
+		outputs.push(JSON.parse(result.stdout))
 	}
+	expect(outputs).toEqual([
+		queued,
+		{ ...queued, status: 'accepted', attemptCount: 1, futureField: true },
+	])
 	expect(fixture.requests).toEqual(
 		Array.from({ length: 2 }, () => ({
 			method: 'POST',
-			path: '/platform/v1/messages/send',
+			path: '/platform/v2/conversations/room-1/messages',
 			authorization: 'Bearer fixture-secret',
-			body: input,
+			idempotencyKey: input.requestId,
+			body: {
+				content: { kind: 'text', text: input.text },
+				requestedBy: input.requestedBy,
+			},
 		})),
 	)
 })
@@ -79,6 +101,8 @@ test.each(['queued', 'processing', 'accepted', 'failed', 'indeterminate'])(
 		const body = {
 			...queued,
 			status,
+			attemptCount: status === 'queued' ? 0 : 1,
+			error: status === 'failed' ? 'channel rejected the send' : null,
 			reflectedMessageId: status === 'accepted' ? 'message-1' : null,
 			futureField: true,
 		}
@@ -92,10 +116,11 @@ test.each(['queued', 'processing', 'accepted', 'failed', 'indeterminate'])(
 		expect(JSON.parse(result.stdout)).toEqual(body)
 		expect(fixture.requests).toEqual([
 			{
-				method: 'POST',
-				path: '/platform/v1/outbound-sends/get',
+				method: 'GET',
+				path: '/platform/v2/outbound-sends/send-1',
 				authorization: 'Bearer fixture-secret',
-				body: { outboundSendId: 'send-1' },
+				idempotencyKey: undefined,
+				body: undefined,
 			},
 		])
 	},
@@ -188,10 +213,12 @@ const createFixture = async (
 	body: unknown,
 	dropConnection = false,
 ) => {
+	const bodies = Array.isArray(body) ? [...body] : null
 	const requests: Array<{
 		method?: string
 		path?: string
 		authorization?: string
+		idempotencyKey?: string | string[]
 		body: unknown
 	}> = []
 	// oxlint-disable-next-line typescript/no-misused-promises -- test server: a handler rejection surfaces as an unhandled error and fails the run
@@ -214,13 +241,14 @@ const createFixture = async (
 				parts: [...form.keys()],
 			}
 		} else {
-			requestBody = JSON.parse(raw.toString())
+			requestBody = raw.length === 0 ? undefined : JSON.parse(raw.toString())
 		}
 
 		requests.push({
 			method: request.method,
 			path: request.url,
 			authorization: request.headers.authorization,
+			idempotencyKey: request.headers['idempotency-key'],
 			body: requestBody,
 		})
 		if (dropConnection) {
@@ -228,7 +256,7 @@ const createFixture = async (
 			return
 		}
 		response.writeHead(status, { 'Content-Type': 'application/json' })
-		response.end(JSON.stringify(body))
+		response.end(JSON.stringify(bodies ? bodies.shift() : body))
 	})
 	server.listen(0, '127.0.0.1')
 	await once(server, 'listening')
@@ -249,18 +277,19 @@ const imageFixture = async (bytes = jpeg) => {
 	return { directory, args: { ...identity, imagePath } }
 }
 
-test('CLI sends exact JPEG multipart bytes and identity without exposing its local path', async () => {
-	const fixture = await createFixture(200, queued)
+test('CLI sends exact JPEG multipart bytes through the v1 image route without exposing its local path', async () => {
+	const fixture = await createFixture(200, v1ImageQueued)
 	const image = await imageFixture()
 	const result = await runCli('messages.send', image.args, fixture.url)
 	expect(result.exitCode, result.stderr).toBe(0)
-	expect(JSON.parse(result.stdout)).toEqual(queued)
+	expect(JSON.parse(result.stdout)).toEqual(imageReceipt)
 	const { text: _, ...identity } = input
 	expect(fixture.requests).toEqual([
 		{
 			method: 'POST',
 			path: '/platform/v1/messages/send',
 			authorization: 'Bearer fixture-secret',
+			idempotencyKey: undefined,
 			body: {
 				metadata: { ...identity, content: { kind: 'image' } },
 				image: Array.from(jpeg),
@@ -301,7 +330,11 @@ test.each(['drop', 'conflict', 'malformed'])(
 			mode === 'conflict' ? 409 : 200,
 			mode === 'conflict'
 				? { error: { code: 'conflict', message: 'Conflicting request' } }
-				: { ...queued, status: 'delivered', privateDetail: 'private-response' },
+				: {
+						...v1ImageQueued,
+						status: 'delivered',
+						privateDetail: 'private-response',
+					},
 			mode === 'drop',
 		)
 		const image = await imageFixture()
@@ -322,7 +355,7 @@ test('a JPEG at the 5 MiB boundary is submitted once', async () => {
 	bytes[bytes.length - 2] = 255
 	bytes[bytes.length - 1] = 217
 	const image = await imageFixture(bytes)
-	const fixture = await createFixture(200, queued)
+	const fixture = await createFixture(200, v1ImageQueued)
 	const result = await runCli('messages.send', image.args, fixture.url)
 	expect(result.exitCode, result.stderr).toBe(0)
 	expect(fixture.requests).toHaveLength(1)

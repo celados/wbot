@@ -12,6 +12,12 @@ import { afterEach, describe, expect, test } from 'vitest'
 
 import { createPlatformClient } from './platform-client'
 import {
+	createAccountFixture,
+	createConversationFixture,
+	createIdentityFixture,
+	createMessageFixture,
+} from './platform-v2-fixtures'
+import {
 	extractChangelogSection,
 	requireMatchingReleaseVersions,
 	readReleaseImpact,
@@ -149,32 +155,26 @@ describe('功能 3：每个发布版本都有可迁移的变更记录', () => {
 })
 
 describe('message evolution never stalls a valid page', () => {
-	test.each(['retracted', 'group_invitation', 'future_poll'])(
+	test.each(['group_invitation', 'future_poll'])(
 		'CLI and MCP retain %s and its cursor',
 		async (kind) => {
 			const content =
-				kind === 'future_poll' ? { kind, options: ['one', 'two'] } : { kind }
-			const page = {
-				items: [
-					{
-						...createMessageResult(),
-						content,
-						revision: 1,
-						referenceId: 'reference-1',
-						invitedMembers: [{ identityId: 'member-1', displayName: 'Bob' }],
-						replyTo: {
-							messageId: null,
-							sender: null,
-							occurredAtMs: null,
-							content,
-						},
-					},
-				],
-				nextCursor: 'cursor-after-notice',
-				hasMore: true,
-				captureFreshness: { status: 'delayed', asOfMs: '1786000000000' },
-			}
-			const url = await createPlatformServer(page)
+				kind === 'future_poll'
+					? { kind, options: ['one', 'two'] }
+					: { kind, members: [createIdentityFixture('member-1')] }
+			const message = createMessageFixture({
+				content,
+				revision: 1,
+				referenceId: 'reference-1',
+				attachment: undefined,
+				replyTo: {
+					messageId: null,
+					sender: null,
+					occurredAtMs: null,
+					state: 'active',
+					content,
+				},
+			})
 			const expectedContent =
 				kind === 'future_poll'
 					? {
@@ -184,102 +184,140 @@ describe('message evolution never stalls a valid page', () => {
 							originalContent: content,
 						}
 					: content
-			for (const verb of ['history', 'updates']) {
-				const cli = await runCli(
-					[
-						'messages.' + verb,
-						JSON.stringify({
-							conversationId: 'conversation-1',
-							cursor: 'cursor-before-notice',
-						}),
-					],
-					{ WBOT_API_KEY: 'fixture-secret', WBOT_PLATFORM_URL: url },
-				)
-				expect(cli.exitCode, cli.stderr).toBe(0)
-				expect(JSON.parse(cli.stdout)).toMatchObject({
+			const expectedMessage = {
+				content: expectedContent,
+				revision: 1,
+				referenceId: 'reference-1',
+				replyTo: { content: expectedContent },
+			}
+			const url = await createRoutedPlatformServer({
+				messages: {
+					items: [message],
+					nextCursor: 'cursor-after-notice',
+					hasMore: true,
+				},
+				changes: {
 					items: [
 						{
-							content: expectedContent,
-							revision: 1,
-							referenceId: 'reference-1',
-							replyTo: { content: expectedContent },
+							sequence: 7,
+							kind: 'message.created',
+							occurredAtMs: 1_786_000_000_000,
+							message,
 						},
 					],
 					nextCursor: 'cursor-after-notice',
 					hasMore: true,
-				})
-			}
+				},
+				conversations: {
+					items: [createConversationFixture({ latestMessage: message })],
+				},
+			})
+			const input = JSON.stringify({
+				conversationId: 'conversation-1',
+				cursor: 'cursor-before-notice',
+			})
+			const env = { WBOT_API_KEY: 'fixture-secret', WBOT_PLATFORM_URL: url }
+			const history = await runCli(['messages.history', input], env)
+			expect(history.exitCode, history.stderr).toBe(0)
+			expect(JSON.parse(history.stdout)).toMatchObject({
+				items: [expectedMessage],
+				nextCursor: 'cursor-after-notice',
+				hasMore: true,
+			})
+			const updates = await runCli(['messages.updates', input], env)
+			expect(updates.exitCode, updates.stderr).toBe(0)
+			expect(JSON.parse(updates.stdout)).toMatchObject({
+				items: [{ sequence: 7, message: expectedMessage }],
+				nextCursor: 'cursor-after-notice',
+				hasMore: true,
+			})
 			const mcp = await createStdioMcpFixture({ WBOT_PLATFORM_URL: url })
 			try {
-				for (const name of ['read_message_history', 'read_message_updates']) {
-					const result = await mcp.client.callTool({
-						name,
-						arguments: {
-							conversationId: 'conversation-1',
-							cursor: 'cursor-before-notice',
-						},
-					})
-					expect(result.isError, JSON.stringify(result)).not.toBe(true)
-					expect(result.structuredContent).toMatchObject({
-						result: {
-							items: [{ content: expectedContent }],
-							nextCursor: 'cursor-after-notice',
-						},
-					})
-				}
+				const mcpHistory = await mcp.client.callTool({
+					name: 'read_message_history',
+					arguments: {
+						conversationId: 'conversation-1',
+						cursor: 'cursor-before-notice',
+					},
+				})
+				expect(mcpHistory.isError, JSON.stringify(mcpHistory)).not.toBe(true)
+				expect(mcpHistory.structuredContent).toMatchObject({
+					result: {
+						items: [{ content: expectedContent }],
+						nextCursor: 'cursor-after-notice',
+					},
+				})
+				const mcpUpdates = await mcp.client.callTool({
+					name: 'read_message_updates',
+					arguments: {
+						conversationId: 'conversation-1',
+						cursor: 'cursor-before-notice',
+					},
+				})
+				expect(mcpUpdates.isError, JSON.stringify(mcpUpdates)).not.toBe(true)
+				expect(mcpUpdates.structuredContent).toMatchObject({
+					result: {
+						items: [{ message: { content: expectedContent } }],
+						nextCursor: 'cursor-after-notice',
+					},
+				})
 			} finally {
 				await mcp.close()
 			}
-			const listUrl = await createPlatformServer({
-				items: [
-					{
-						...createConversationResult(),
-						latestMessage: {
-							id: 'message-1',
-							direction: 'in',
-							type: kind,
-							text: null,
-							content,
-							occurredAtMs: '1786000000000',
-						},
-					},
-				],
-				nextCursor: 'list-next',
-				hasMore: false,
-			})
-			const list = await runCli(['conversations.list'], {
-				WBOT_API_KEY: 'fixture-secret',
-				WBOT_PLATFORM_URL: listUrl,
-			})
+			const list = await runCli(['conversations.list'], env)
 			expect(list.exitCode, list.stderr).toBe(0)
 			expect(JSON.parse(list.stdout).items[0].latestMessage).toMatchObject({
-				type: kind === 'future_poll' ? 'unknown' : kind,
 				content: expectedContent,
 			})
 		},
 	)
 
+	test('a retracted message is a state with null content, not a content kind', async () => {
+		const retracted = createMessageFixture({
+			state: 'retracted',
+			retractedAtMs: 1_786_000_001_000,
+			revision: 2,
+			content: null,
+			attachment: undefined,
+		})
+		const client = createPlatformClient({
+			baseUrl: 'https://platform.example.test',
+			tenantApiKey: 'fixture-secret',
+			fetch: async () => Response.json(retracted),
+		})
+		await expect(
+			client.getMessage({
+				conversationId: 'conversation-1',
+				messageId: 'message-1',
+			}),
+		).resolves.toMatchObject({ state: 'retracted', content: null, revision: 2 })
+	})
+
 	test.each([
 		{ kind: 'text' },
 		{ kind: 'text', text: 42 },
 		{ kind: 'unknown' },
-		{ kind: 'nudge', suffix: 42 },
+		{ kind: 'nudge', suffix: 42, target: null },
+		{ kind: 'nudge', suffix: 'hi' },
+		{ kind: 'group_invitation' },
+		{ kind: 'file', filename: 'a.pdf', sizeBytes: '12' },
 		{ kind: '' },
 		{ kind: 42 },
 		{},
+		null,
 	])('malformed known content still fails closed: %j', async (content) => {
 		const client = createPlatformClient({
 			baseUrl: 'https://platform.example.test',
 			tenantApiKey: 'fixture-secret',
 			fetch: async () =>
 				Response.json({
-					items: [{ ...createMessageResult(), content }],
+					items: [createMessageFixture({ content })],
 					nextCursor: 'next',
 					hasMore: false,
 				}),
 		})
 		await expect(
-			client.queryMessageHistory({ conversationId: 'conversation-1' }),
+			client.listMessages({ conversationId: 'conversation-1' }),
 		).rejects.toMatchObject({ code: 'invalid_platform_response' })
 	})
 })
@@ -292,36 +330,59 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 			fetch: async () =>
 				Response.json({
 					items: [
-						{ ...createConversationResult(), futureField: { enabled: true } },
+						createConversationFixture({ futureField: { enabled: true } }),
 					],
-					nextCursor: 'next',
-					hasMore: false,
 					futurePageField: 'ignored-or-preserved',
 				}),
 		})
 
-		const result = await client.queryConversations()
+		const result = await client.listConversations()
 
 		expect(result.items).toHaveLength(1)
 		expect(result.items[0]?.id).toBe('conversation-1')
+
+		const accountClient = createPlatformClient({
+			baseUrl: 'https://platform.example.test',
+			tenantApiKey: 'fixture-secret',
+			fetch: async () =>
+				Response.json({
+					items: [
+						createAccountFixture({
+							capabilities: ['observe_messages', 'future_capability'],
+						}),
+					],
+				}),
+		})
+		expect((await accountClient.listAccounts()).items[0]).toMatchObject({
+			capabilities: ['observe_messages', 'future_capability'],
+			captureFreshness: { status: 'current', asOfMs: 1_786_000_000_000 },
+		})
 
 		const messageClient = createPlatformClient({
 			baseUrl: 'https://platform.example.test',
 			tenantApiKey: 'fixture-secret',
 			fetch: async () =>
 				Response.json({
-					items: [{ ...createMessageResult(), futureMessageField: true }],
+					items: [
+						{
+							sequence: 3,
+							kind: 'message.attachment_ready',
+							occurredAtMs: 1_786_000_000_000,
+							message: createMessageFixture({ futureMessageField: true }),
+							futureChangeField: true,
+						},
+					],
 					nextCursor: 'updates-next',
 					hasMore: false,
-					captureFreshness: { status: 'current', asOfMs: '1786000000000' },
 					futurePageField: true,
 				}),
 		})
-		const updates = await messageClient.queryMessages({
+		const updates = await messageClient.listChanges({
 			conversationId: 'conversation-1',
+			cursor: 'updates-cursor',
 		})
 
-		expect(updates.items[0]?.attachment).toMatchObject({
+		expect(updates.items[0]?.message.attachment).toMatchObject({
 			status: 'ready',
 			descriptor: { kind: 'audio', durationMs: 1250 },
 		})
@@ -341,40 +402,47 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 					{ status: 200, headers: { 'Content-Type': 'application/json' } },
 				),
 		})
+		const conversation = { conversationId: 'conversation-1' }
 
-		await expect(client.queryConversations()).rejects.toMatchObject({
+		await expect(client.listAccounts()).rejects.toMatchObject({
 			name: 'PlatformContractError',
 			code: 'invalid_platform_response',
-			endpoint: '/platform/v1/conversations/query',
+			endpoint: 'GET /platform/v2/accounts',
+		})
+		await expect(client.listConversations()).rejects.toMatchObject({
+			name: 'PlatformContractError',
+			endpoint: 'GET /platform/v2/conversations',
+		})
+		await expect(client.listChanges(conversation)).rejects.toMatchObject({
+			name: 'PlatformContractError',
+			endpoint: 'GET /platform/v2/conversations/{id}/changes',
+		})
+		await expect(client.listMessages(conversation)).rejects.toMatchObject({
+			name: 'PlatformContractError',
+			endpoint: 'GET /platform/v2/conversations/{id}/messages',
 		})
 		await expect(
-			client.queryMessages({ conversationId: 'conversation-1' }),
+			client.getMessage({ ...conversation, messageId: 'message-1' }),
 		).rejects.toMatchObject({
 			name: 'PlatformContractError',
-			endpoint: '/platform/v1/messages/query',
+			endpoint: 'GET /platform/v2/conversations/{id}/messages/{messageId}',
 		})
 		await expect(
-			client.queryMessageHistory({ conversationId: 'conversation-1' }),
-		).rejects.toMatchObject({
-			name: 'PlatformContractError',
-			endpoint: '/platform/v1/messages/history',
-		})
-		await expect(
-			client.sendMessage({
-				conversationId: 'conversation-1',
+			client.sendText({
+				...conversation,
 				requestId: 'request-1',
 				text: 'hello',
 				requestedBy: 'release-policy-test',
 			}),
 		).rejects.toMatchObject({
 			name: 'PlatformContractError',
-			endpoint: '/platform/v1/messages/send',
+			endpoint: 'POST /platform/v2/conversations/{id}/messages',
 		})
 		await expect(
 			client.getOutboundSend({ outboundSendId: 'send-1' }),
 		).rejects.toMatchObject({
 			name: 'PlatformContractError',
-			endpoint: '/platform/v1/outbound-sends/get',
+			endpoint: 'GET /platform/v2/outbound-sends/{id}',
 		})
 
 		const invalidJsonClient = createPlatformClient({
@@ -386,41 +454,57 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 					headers: { 'Content-Type': 'application/json' },
 				}),
 		})
-		await expect(invalidJsonClient.queryConversations()).rejects.toMatchObject({
+		await expect(invalidJsonClient.listConversations()).rejects.toMatchObject({
 			name: 'PlatformContractError',
 			code: 'invalid_platform_response',
-			endpoint: '/platform/v1/conversations/query',
+			endpoint: 'GET /platform/v2/conversations',
 		})
 
-		const invalidUnionClient = createPlatformClient({
-			baseUrl: 'https://platform.example.test',
-			tenantApiKey: 'fixture-secret',
-			fetch: async () =>
-				Response.json({
-					items: [
-						{
-							...createMessageResult(),
-							attachment: {
-								status: 'ready',
-								url: 'https://media.example/audio.m4a',
-								mimeType: 'audio/mp4',
-								sizeBytes: 512,
-								descriptor: { kind: 'video', durationMs: 1250 },
+		const invalidMessages = [
+			createMessageFixture({
+				attachment: {
+					status: 'ready',
+					url: 'https://media.example/audio.m4a',
+					mimeType: 'audio/mp4',
+					sizeBytes: 512,
+					descriptor: { kind: 'video', durationMs: 1250 },
+				},
+			}),
+			createMessageFixture({ occurredAtMs: '1786000000000' }),
+			createMessageFixture({ state: 'retracted' }),
+			createMessageFixture({ content: null }),
+			createMessageFixture({ mentions: undefined }),
+			createMessageFixture({ revision: undefined }),
+		]
+		for (const message of invalidMessages) {
+			const invalidClient = createPlatformClient({
+				baseUrl: 'https://platform.example.test',
+				tenantApiKey: 'fixture-secret',
+				fetch: async () =>
+					Response.json({
+						items: [
+							{
+								sequence: 1,
+								kind: 'message.created',
+								occurredAtMs: 1,
+								message,
 							},
-						},
-					],
-					nextCursor: 'updates-next',
-					hasMore: false,
-					captureFreshness: { status: 'current', asOfMs: '1786000000000' },
+						],
+						nextCursor: 'updates-next',
+						hasMore: false,
+					}),
+			})
+			await expect(
+				invalidClient.listChanges({
+					conversationId: 'conversation-1',
+					cursor: 'c',
 				}),
-		})
-		await expect(
-			invalidUnionClient.queryMessages({ conversationId: 'conversation-1' }),
-		).rejects.toMatchObject({
-			name: 'PlatformContractError',
-			code: 'invalid_platform_response',
-			endpoint: '/platform/v1/messages/query',
-		})
+			).rejects.toMatchObject({
+				name: 'PlatformContractError',
+				code: 'invalid_platform_response',
+				endpoint: 'GET /platform/v2/conversations/{id}/changes',
+			})
+		}
 	})
 
 	test('场景 4.3：契约错误诊断不泄漏敏感内容', async () => {
@@ -438,7 +522,7 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 		})
 
 		const error = await client
-			.queryConversations()
+			.listConversations()
 			.catch((caught: unknown) => caught)
 
 		expect(error).toMatchObject({
@@ -466,7 +550,7 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 				),
 		})
 
-		await expect(client.queryConversations()).rejects.toMatchObject({
+		await expect(client.listConversations()).rejects.toMatchObject({
 			name: 'PlatformRequestError',
 			code: 'forbidden',
 			status: 403,
@@ -478,11 +562,7 @@ describe('功能 4：Agent 只接收符合契约的 Platform 结果', () => {
 describe('功能 5：API 弃用信息对人和 Agent 都可见', () => {
 	test('场景 5.1：弃用警告不污染 CLI JSON', async () => {
 		const platformUrl = await createPlatformServer(
-			{
-				items: [createConversationResult()],
-				nextCursor: 'next',
-				hasMore: false,
-			},
+			{ items: [createConversationFixture()] },
 			{
 				Deprecation: '@1788739200',
 				Sunset: 'Tue, 08 Dec 2026 00:00:00 GMT',
@@ -509,29 +589,18 @@ describe('功能 5：API 弃用信息对人和 Agent 都可见', () => {
 			tenantApiKey: 'fixture-secret',
 			onDeprecationWarning: (warning) => warnings.push(warning),
 			fetch: async () =>
-				new Response(
-					JSON.stringify({
-						items: [createConversationResult()],
-						nextCursor: 'next',
-						hasMore: false,
-					}),
-					{
-						status: 200,
-						headers: { Link: '<https://platform.example/docs>; rel="help"' },
-					},
-				),
+				new Response(JSON.stringify({ items: [createConversationFixture()] }), {
+					status: 200,
+					headers: { Link: '<https://platform.example/docs>; rel="help"' },
+				}),
 		})
-		await linkOnlyClient.queryConversations()
+		await linkOnlyClient.listConversations()
 		expect(warnings).toEqual([])
 	})
 
 	test('场景 5.2：MCP 弃用警告不破坏协议', async () => {
 		const platformUrl = await createPlatformServer(
-			{
-				items: [createConversationResult()],
-				nextCursor: 'next',
-				hasMore: false,
-			},
+			{ items: [createConversationFixture()] },
 			{
 				Deprecation: '@1788739200',
 				Sunset: 'Tue, 08 Dec 2026 00:00:00 GMT',
@@ -612,10 +681,13 @@ describe('功能 6：稳定发布具有当前后端兼容证据', () => {
 			'against the current test Platform contract',
 		)
 		expect(platform.paths).toEqual([
-			'/platform/v1/webhooks/list',
-			'/platform/v1/conversations/query',
-			'/platform/v1/messages/history',
-			'/platform/v1/messages/query',
+			'POST /platform/v1/webhooks/list',
+			'GET /platform/v2/accounts',
+			'GET /platform/v2/conversations',
+			'GET /platform/v2/conversations/conversation-1/messages?limit=1',
+			'GET /platform/v2/conversations/conversation-1/messages/message-1',
+			'GET /platform/v2/conversations/conversation-1/changes?limit=50',
+			'GET /platform/v2/conversations/conversation-1/changes?cursor=tail-cursor&limit=1',
 		])
 	}, 30_000)
 
@@ -823,35 +895,6 @@ const requiredProcessEnv = (name: string) => {
 	return value
 }
 
-const createConversationResult = () => ({
-	id: 'conversation-1',
-	channel: 'wechat',
-	channelConversationId: 'opaque-conversation-1',
-	kind: 'room',
-	title: 'Founders Circle',
-	capabilities: ['read', 'send'],
-	captureFreshness: { status: 'current', asOfMs: '1786000000000' },
-	latestMessage: null,
-})
-
-const createMessageResult = () => ({
-	messageId: 'message-1',
-	conversationId: 'conversation-1',
-	direction: 'in',
-	content: { kind: 'nudge', suffix: 'hello' },
-	sender: { identityId: 'identity-1', displayName: 'Sender' },
-	target: { identityId: 'identity-2', displayName: 'Target' },
-	replyTo: null,
-	occurredAtMs: '1786000000000',
-	attachment: {
-		status: 'ready',
-		url: 'https://media.example/audio.m4a',
-		mimeType: 'audio/mp4',
-		sizeBytes: 512,
-		descriptor: { kind: 'audio', durationMs: 1250 },
-	},
-})
-
 const createPlatformServer = (
 	body: unknown,
 	headers: Readonly<Record<string, string>> = {},
@@ -876,43 +919,8 @@ const createPlatformServer = (
 		})
 	})
 
-const createCompatibilityPlatformServer = () =>
-	new Promise<{ url: string; paths: Array<string> }>((resolve, reject) => {
-		const paths: Array<string> = []
-		const server = createServer((request, response) => {
-			const path = request.url ?? ''
-			paths.push(path)
-			response.statusCode = 200
-			response.setHeader('Content-Type', 'application/json')
-			if (path === '/platform/v1/conversations/query') {
-				response.end(
-					JSON.stringify({
-						items: [createConversationResult()],
-						nextCursor: 'next',
-						hasMore: false,
-					}),
-				)
-				return
-			}
-			if (path === '/platform/v1/messages/history') {
-				response.end(
-					JSON.stringify({
-						items: [],
-						nextCursor: 'history-next',
-						hasMore: false,
-					}),
-				)
-				return
-			}
-			response.end(
-				JSON.stringify({
-					items: [],
-					nextCursor: 'updates-next',
-					hasMore: false,
-					captureFreshness: { status: 'current', asOfMs: '1786000000000' },
-				}),
-			)
-		})
+const listen = (server: Server) =>
+	new Promise<string>((resolve, reject) => {
 		server.once('error', reject)
 		server.listen(0, '127.0.0.1', () => {
 			const address = server.address()
@@ -921,9 +929,62 @@ const createCompatibilityPlatformServer = () =>
 				return
 			}
 			servers.push(server)
-			resolve({ url: `http://127.0.0.1:${address.port}`, paths })
+			resolve(`http://127.0.0.1:${address.port}`)
 		})
 	})
+
+/** Serves v2 list, timeline, and change-log bodies by path suffix. */
+const createRoutedPlatformServer = (bodies: {
+	conversations: unknown
+	messages: unknown
+	changes: unknown
+}) =>
+	listen(
+		createServer((request, response) => {
+			const path = new URL(request.url ?? '/', 'http://fixture').pathname
+			response.setHeader('Content-Type', 'application/json')
+			response.end(
+				JSON.stringify(
+					path.endsWith('/changes')
+						? bodies.changes
+						: path.endsWith('/messages')
+							? bodies.messages
+							: bodies.conversations,
+				),
+			)
+		}),
+	)
+
+const createCompatibilityPlatformServer = async () => {
+	const paths: Array<string> = []
+	const url = await listen(
+		createServer((request, response) => {
+			const path = request.url ?? ''
+			paths.push(`${request.method} ${path}`)
+			response.statusCode = 200
+			response.setHeader('Content-Type', 'application/json')
+			const pathname = new URL(path, 'http://fixture').pathname
+			const body =
+				pathname === '/platform/v1/webhooks/list'
+					? { items: [] }
+					: pathname === '/platform/v2/accounts'
+						? { items: [createAccountFixture()] }
+						: pathname === '/platform/v2/conversations'
+							? { items: [createConversationFixture()] }
+							: pathname.endsWith('/messages')
+								? {
+										items: [createMessageFixture()],
+										nextCursor: 'history-next',
+										hasMore: true,
+									}
+								: pathname.endsWith('/messages/message-1')
+									? createMessageFixture()
+									: { items: [], nextCursor: 'tail-cursor', hasMore: false }
+			response.end(JSON.stringify(body))
+		}),
+	)
+	return { url, paths }
+}
 
 const createTemporaryDirectory = async () => {
 	const path = await mkdtemp(join(tmpdir(), 'wbot-release-policy-test-'))

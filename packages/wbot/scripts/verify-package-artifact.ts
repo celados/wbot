@@ -107,9 +107,11 @@ try {
 	const wbot = join(globalBinDirectory, 'wbot')
 	const schema = await runCommand([wbot, '@schema'], consumerDirectory)
 	for (const command of [
+		'### accounts.list',
 		'### conversations.list',
 		'### messages.history',
 		'### messages.updates',
+		'### messages.get',
 		'### messages.send',
 		'imagePath',
 		'outbound-sends',
@@ -288,7 +290,12 @@ async function verifyImageSend(wbot: string, directory: string): Promise<void> {
 			!valid ||
 			requests !== 1 ||
 			output.stderr !== '' ||
-			JSON.stringify(JSON.parse(output.stdout)) !== JSON.stringify(result)
+			JSON.stringify(JSON.parse(output.stdout)) !==
+				JSON.stringify({
+					id: result.outboundSendId,
+					conversationId: result.conversationId,
+					status: result.status,
+				})
 		) {
 			throw new Error('Installed artifact image multipart smoke test failed.')
 		}

@@ -1,17 +1,18 @@
-export type Page<T> = {
-	items: Array<T>
-	nextCursor: string
-	hasMore: boolean
+// Public result types for the Platform API v2 contract (docs/platform-v2.md).
+// JPEG image sends and webhooks still use /platform/v1; see `platformV1Routes`.
+
+export type Identity = {
+	identityId: string
+	displayName: string | null
+	avatar: { status: 'pending' } | { status: 'ready'; url: string }
 }
 
 export type MessageContent =
-	| { kind: 'retracted' }
-	| { kind: 'group_invitation' }
 	| { kind: 'text'; text: string | null }
 	| { kind: 'image' }
 	| { kind: 'audio' }
 	| { kind: 'video' }
-	| { kind: 'file'; filename: string | null; sizeBytes: string | null }
+	| { kind: 'file'; filename: string | null; sizeBytes: number | null }
 	| { kind: 'emoji' }
 	| { kind: 'location' }
 	| {
@@ -29,78 +30,21 @@ export type MessageContent =
 			pagePath: string | null
 			thumbnailUrl: string | null
 	  }
-	| { kind: 'nudge'; suffix: string | null }
+	| { kind: 'nudge'; suffix: string | null; target: Identity | null }
+	| { kind: 'group_invitation'; members: Array<Identity> }
 	| {
 			kind: 'unknown'
 			preview: string
+			/** Set when the Platform returned a kind this client does not know. */
 			originalKind?: string
 			originalContent?: Record<string, unknown>
 	  }
-
-export type ConversationsQueryInput = {
-	cursor?: string
-	limit?: number
-}
-
-export type ConversationAvatar =
-	| { kind: 'fallback' }
-	| { kind: 'image'; url: string }
-	| { kind: 'composite'; urls: Array<string> }
-
-export type ConversationCapability = 'read' | 'send'
-
-export type CaptureFreshness = {
-	status: 'unknown' | 'current' | 'delayed' | 'unavailable'
-	asOfMs: string | null
-}
-
-export type ConversationResult = {
-	id: string
-	channel: string
-	channelConversationId: string
-	kind: 'direct' | 'room'
-	title: string | null
-	capabilities: Array<ConversationCapability>
-	captureFreshness: CaptureFreshness
-	avatar?: ConversationAvatar
-	latestMessage: {
-		id: string
-		direction: 'in' | 'out'
-		type: MessageContent['kind']
-		originalType?: string
-		text: string | null
-		content: MessageContent | null
-		occurredAtMs: string
-	} | null
-}
-
-export type MessagesQueryInput = {
-	conversationId: string
-	cursor?: string
-	limit?: number
-}
-
-export type MessagesHistoryInput = {
-	conversationId: string
-	cursor?: string
-	limit?: number
-}
-
-export type MessageIdentity = {
-	identityId: string
-	displayName: string | null
-	avatar?:
-		| { status: 'pending' }
-		| {
-				status: 'ready'
-				url: string
-		  }
-}
 
 export type MessageAttachment =
 	| { status: 'pending' }
 	| {
 			status: 'ready'
+			/** Signed and short-lived; refresh with `messages.get`. */
 			url: string
 			mimeType: string
 			sizeBytes: number
@@ -110,33 +54,127 @@ export type MessageAttachment =
 				| { kind: 'audio'; durationMs: number }
 	  }
 
-export type MessageResult = {
-	referenceId?: string
-	revision?: number
-	messageId: string
+export type MessageState = 'active' | 'retracted'
+
+export type Message = {
+	id: string
 	conversationId: string
 	direction: 'in' | 'out'
-	content: MessageContent
-	sender: MessageIdentity | null
-	target?: MessageIdentity | null
-	invitedMembers?: Array<MessageIdentity>
+	occurredAtMs: number
+	referenceId?: string
+	revision: number
+	state: MessageState
+	retractedAtMs?: number
+	/** `null` exactly when `state` is `retracted`. */
+	content: MessageContent | null
+	sender: Identity | null
 	replyTo: {
-		referenceId?: string
 		messageId: string | null
-		sender: MessageIdentity | null
-		occurredAtMs: string | null
-		content: MessageContent
+		referenceId?: string
+		sender: Identity | null
+		occurredAtMs: number | null
+		state: MessageState
+		content: MessageContent | null
 	} | null
-	occurredAtMs: string
+	mentions: Array<Identity>
+	mentionsAll: boolean
+	mentionsSelf: boolean
 	attachment?: MessageAttachment
+	/** Present only on outgoing messages sent by the caller's own Tenant. */
+	outboundSendId?: string
 }
 
-export type MessagesQueryResult = Page<MessageResult> & {
+export type CaptureFreshness = {
+	status: 'unknown' | 'current' | 'delayed' | 'unavailable'
+	asOfMs: number | null
+}
+
+/** Known adapter capabilities; the Platform may add more, so unknown strings are kept. */
+export type AccountCapability =
+	| 'observe_messages'
+	| 'send_text'
+	| 'send_image'
+	| 'send_mentions'
+	| (string & {})
+
+export type Account = {
+	id: string
+	channel: string
+	capabilities: Array<AccountCapability>
+	selfIdentity: Identity | null
 	captureFreshness: CaptureFreshness
+}
+
+export type ConversationAvatar =
+	| { kind: 'fallback' }
+	| { kind: 'image'; url: string }
+	| { kind: 'composite'; urls: Array<string> }
+
+export type ConversationCapability = 'read' | 'send'
+
+export type Conversation = {
+	id: string
+	accountId: string
+	channel: string
+	channelConversationId: string
+	kind: 'direct' | 'room'
+	title: string | null
+	avatar: ConversationAvatar
+	latestMessage: Message | null
+	lastActivityAtMs: number | null
+	capabilities: Array<ConversationCapability>
+}
+
+export type ItemList<T> = { items: Array<T> }
+
+export type MessagePage = {
+	items: Array<Message>
+	/** `null` when the page is empty; stop paging when `hasMore` is false. */
+	nextCursor: string | null
+	hasMore: boolean
+}
+
+export type MessageChangeKind =
+	| 'message.created'
+	| 'message.retracted'
+	| 'message.attachment_ready'
+
+export type MessageChange = {
+	sequence: number
+	kind: MessageChangeKind
+	occurredAtMs: number
+	/** Current projection, not a snapshot taken at change time. */
+	message: Message
+}
+
+export type MessageChangePage = {
+	items: Array<MessageChange>
+	nextCursor: string
+	hasMore: boolean
+}
+
+export type MessagesHistoryInput = {
+	conversationId: string
+	/** A history `nextCursor`; pages toward older messages. */
+	cursor?: string
+	limit?: number
+}
+
+export type MessagesUpdatesInput = {
+	conversationId: string
+	/** An updates `nextCursor`; omit to bootstrap a cursor at the current tail. */
+	cursor?: string
+	limit?: number
+}
+
+export type MessageGetInput = {
+	conversationId: string
+	messageId: string
 }
 
 export type MessageSendInput = {
 	conversationId: string
+	/** Sent as the v2 `Idempotency-Key`; one namespace with the v1 requestId. */
 	requestId: string
 	text: string
 	requestedBy: string
@@ -150,21 +188,31 @@ export type ImageMessageSendInput = {
 	text?: never
 }
 
-export type MessageSendResult = {
-	outboundSendId: string
+export type OutboundSendStatus =
+	| 'queued'
+	| 'processing'
+	| 'accepted'
+	| 'failed'
+	| 'indeterminate'
+
+export type OutboundSend = {
+	id: string
 	conversationId: string
+	status: OutboundSendStatus
+	attemptCount: number
+	error: string | null
+	reflectedMessageId: string | null
+	createdAtMs: number
+	updatedAtMs: number
+}
+
+/** A JPEG send is still submitted through /platform/v1 and only reports its queued identity. */
+export type ImageSendReceipt = Pick<OutboundSend, 'id' | 'conversationId'> & {
 	status: 'queued'
 }
 
 export type OutboundSendGetInput = {
 	outboundSendId: string
-}
-
-export type OutboundSendResult = {
-	outboundSendId: string
-	conversationId: string
-	status: 'queued' | 'processing' | 'accepted' | 'failed' | 'indeterminate'
-	reflectedMessageId: string | null
 }
 
 export type PlatformErrorCode =

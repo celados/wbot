@@ -22,14 +22,14 @@ const limit = v.optional(
 	v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(100)),
 	50,
 )
-const pageInput = v.strictObject({
-	cursor: v.optional(nonEmptyString),
-	limit,
-})
 const messagePageInput = v.strictObject({
 	conversationId: nonEmptyString,
 	cursor: v.optional(nonEmptyString),
 	limit,
+})
+const messageGetInput = v.strictObject({
+	conversationId: nonEmptyString,
+	messageId: nonEmptyString,
 })
 const messageSendInput = v.strictObject({
 	conversationId: nonEmptyString,
@@ -87,23 +87,45 @@ const commands = {
 			}),
 		},
 	),
+	accounts: group(
+		{ description: 'Read the accounts behind readable conversations' },
+		{
+			list: c.meta({
+				description:
+					'List accounts with capabilities and capture freshness (quiet is not the same as current)',
+			}),
+		},
+	),
 	conversations: group(
 		{ description: 'Read wbot conversations' },
 		{
-			list: c
-				.meta({ description: 'List conversations this API key can read' })
-				.input(schema(pageInput)),
+			list: c.meta({
+				description:
+					'List every conversation this API key can read, most recent activity first (not paginated)',
+			}),
 		},
 	),
 	messages: group(
 		{ description: 'Read and send wbot messages' },
 		{
 			history: c
-				.meta({ description: 'Read newest messages and page backward' })
+				.meta({
+					description:
+						'Read newest messages (oldest first within a page) and page backward with nextCursor',
+				})
 				.input(schema(messagePageInput)),
 			updates: c
-				.meta({ description: 'Read messages forward from an updates cursor' })
+				.meta({
+					description:
+						'Read message changes forward from a saved cursor; without cursor, return no items and a tail cursor to save',
+				})
 				.input(schema(messagePageInput)),
+			get: c
+				.meta({
+					description:
+						'Get the latest projection of one message with a freshly signed attachment URL',
+				})
+				.input(schema(messageGetInput)),
 			send: c
 				.meta({
 					description:
@@ -195,42 +217,49 @@ const runWbotCli = async () => {
 					return JSON.stringify({ configured: true, path })
 				},
 			},
+			accounts: {
+				list: async () =>
+					JSON.stringify(await callPlatform((client) => client.listAccounts())),
+			},
 			conversations: {
-				list: async (args) =>
+				list: async () =>
 					JSON.stringify(
-						await callPlatform((client) =>
-							client.queryConversations(args.input),
-						),
+						await callPlatform((client) => client.listConversations()),
 					),
 			},
 			messages: {
 				history: async (args) =>
 					JSON.stringify(
-						await callPlatform((client) =>
-							client.queryMessageHistory(args.input),
-						),
+						await callPlatform((client) => client.listMessages(args.input)),
 					),
 				updates: async (args) =>
 					JSON.stringify(
-						await callPlatform((client) => client.queryMessages(args.input)),
+						await callPlatform((client) => client.listChanges(args.input)),
+					),
+				get: async (args) =>
+					JSON.stringify(
+						await callPlatform((client) => client.getMessage(args.input)),
 					),
 				send: async (args) => {
 					const { text, imagePath, ...identity } = args.input
 					if ((text === undefined) === (imagePath === undefined)) {
 						throw new Error('Specify exactly one of text or imagePath')
 					}
-					const input =
-						imagePath === undefined
-							? { ...identity, text: text! }
-							: {
-									...identity,
-									content: {
-										kind: 'image' as const,
-										base64: await readImageFile(imagePath),
-									},
-								}
+					if (imagePath === undefined) {
+						const input = { ...identity, text: text! }
+						return JSON.stringify(
+							await callPlatform((client) => client.sendText(input)),
+						)
+					}
+					const input = {
+						...identity,
+						content: {
+							kind: 'image' as const,
+							base64: await readImageFile(imagePath),
+						},
+					}
 					return JSON.stringify(
-						await callPlatform((client) => client.sendMessage(input)),
+						await callPlatform((client) => client.sendImage(input)),
 					)
 				},
 			},

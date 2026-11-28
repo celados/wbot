@@ -25,31 +25,37 @@ try {
 		environment,
 		[apiKey],
 	)
-	await runCommand(
-		[join(globalBinDirectory, 'wbot'), 'webhooks.list'],
-		temporaryRoot,
-		environment,
-		[apiKey],
-	)
-	const conversationsResult = await runCommand(
-		[join(globalBinDirectory, 'wbot'), 'conversations.list', '{ "limit": 1 }'],
-		temporaryRoot,
-		environment,
-		[apiKey],
-	)
+	const wbot = (...args: string[]) =>
+		runCommand(
+			[join(globalBinDirectory, 'wbot'), ...args],
+			temporaryRoot,
+			environment,
+			[apiKey],
+		)
+	// Webhooks remain on /platform/v1; every read below uses /platform/v2.
+	await wbot('webhooks.list')
+	await wbot('accounts.list')
+	const conversationsResult = await wbot('conversations.list')
 	const conversationId = readFirstConversationId(conversationsResult.stdout)
-	const messageQuery = JSON.stringify({ conversationId, limit: 1 })
-	await runCommand(
-		[join(globalBinDirectory, 'wbot'), 'messages.history', messageQuery],
-		temporaryRoot,
-		environment,
-		[apiKey],
+	const history = await wbot(
+		'messages.history',
+		JSON.stringify({ conversationId, limit: 1 }),
 	)
-	await runCommand(
-		[join(globalBinDirectory, 'wbot'), 'messages.updates', messageQuery],
-		temporaryRoot,
-		environment,
-		[apiKey],
+	const messageId = readFirstItemId(history.stdout)
+	if (messageId !== null) {
+		await wbot('messages.get', JSON.stringify({ conversationId, messageId }))
+	}
+	const bootstrap = await wbot(
+		'messages.updates',
+		JSON.stringify({ conversationId }),
+	)
+	await wbot(
+		'messages.updates',
+		JSON.stringify({
+			conversationId,
+			cursor: readNextCursor(bootstrap.stdout),
+			limit: 1,
+		}),
 	)
 	process.stdout.write(
 		`Verified ${basename(artifactPath)} against the current test Platform contract.\n`,
@@ -62,7 +68,7 @@ function readFirstConversationId(stdout: string): string {
 	const payload = JSON.parse(stdout) as unknown
 	if (!payload || typeof payload !== 'object' || !('items' in payload)) {
 		throw new Error(
-			'Candidate wbot artifact did not return a conversation page.',
+			'Candidate wbot artifact did not return a conversation list.',
 		)
 	}
 	const { items } = payload as { items?: unknown }
@@ -83,6 +89,20 @@ function readFirstConversationId(stdout: string): string {
 		)
 	}
 	return firstConversation.id
+}
+
+function readFirstItemId(stdout: string): string | null {
+	const payload = JSON.parse(stdout) as { items?: Array<{ id?: unknown }> }
+	const id = payload.items?.[0]?.id
+	return typeof id === 'string' ? id : null
+}
+
+function readNextCursor(stdout: string): string {
+	const payload = JSON.parse(stdout) as { nextCursor?: unknown }
+	if (typeof payload.nextCursor !== 'string' || !payload.nextCursor) {
+		throw new Error('Candidate wbot artifact did not return an updates cursor.')
+	}
+	return payload.nextCursor
 }
 
 function parseArtifactPath(arguments_: readonly string[]): string {
