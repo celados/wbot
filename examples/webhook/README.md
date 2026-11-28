@@ -1,8 +1,10 @@
 # Receive incoming-message wake-ups
 
-Run `receiver.ts` with Bun and an installed wbot 0.2.5 or newer. It verifies the raw-body HMAC,
+Run `receiver.ts` with Bun and an installed wbot 0.4.0-rc.3 or newer (earlier releases return the
+`/platform/v1` updates shape). It verifies the raw-body HMAC,
 persists a wake-up in SQLite before acknowledging it, and drains `wbot messages.updates` with a
-saved cursor. The example stores only message IDs/revisions. Replace that demonstration processing
+saved cursor. Without a saved cursor, `messages.updates` returns no items and a tail cursor, so the
+first drain only bootstraps. The example stores only message IDs/revisions. Replace that demonstration processing
 with your own durable business transaction or outbox before using it for customer work.
 
 ```mermaid
@@ -43,8 +45,8 @@ Restart the receiver once after registration to reconcile from the saved cursor 
 gap. Thereafter webhook wake-ups start drains immediately. Failed drains retry after 30 seconds;
 there is no idle polling loop. Startup always reconciles, including after a crash between operations.
 
-For Test use `WBOT_PLATFORM_URL=https://wbot-api-test.celados.com` consistently for both configuration
-and receiver processes. Production is the CLI default. Keys, grants and cursors belong to one
+The CLI default is `https://wbot-api-test.celados.com`. If you override `WBOT_PLATFORM_URL`, use the
+same value for both configuration and receiver processes. Keys, grants and cursors belong to one
 environment and cannot be mixed.
 
 ## Notification and recovery contract
@@ -60,7 +62,8 @@ Serialize consumption per conversation, merge message ID/revision, and advance `
 with durable processing of that page. A 2xx response accepts the wake-up; it does not prove business
 processing. This example remembers event IDs for seven days and stores latest projection revisions.
 It still reconciles on duplicate wake-ups, which is safe because cursor/projection processing is
-idempotent. `messages.updates` is the CLI name for the Platform `messages.query` operation.
+idempotent. `messages.updates` reads the `/platform/v2` per-conversation change log; each item wraps
+the current `message` projection. Webhook management itself stays on `/platform/v1`.
 
 Only **incoming new messages** trigger notifications. Updates can still return outgoing messages
 and retractions; auto-reply integrations must filter direction. Quiet retractions and attachment

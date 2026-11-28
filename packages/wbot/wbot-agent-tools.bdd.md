@@ -19,8 +19,8 @@ status: accepted # draft | accepted | superseded
 
 - `wbot` Agent-first CLI 与稳定 JSON 结果
 - Codex Plugin 与 Claude Code Plugin
-- 列出获授权会话、向过去读取历史、从显式游标读取新增消息
-- 会话能力与面向 Tenant 的采集新鲜度
+- 列出账号与获授权会话、向过去读取历史、从显式游标读取消息变更、重读单条消息
+- 会话能力与账号级、面向 Tenant 的采集新鲜度
 - 一次性本地凭据配置、环境变量覆盖与敏感信息保护
 - Caller-owned cursor 与无状态恢复
 
@@ -45,18 +45,16 @@ And 外部帮助与 schema 不要求用户理解内部 Switchboard 名称
 **场景 1.2：CLI schema 列出读取与发送入口**
 Given Agent 尚未执行业务请求
 When Agent 查看 CLI schema
-Then schema 列出会话列表、消息历史和消息更新三个读取命令
+Then schema 列出账号列表、会话列表、消息历史、消息更新和单条消息五个读取命令
 And schema 列出 messages.send 与 outbound-sends.get
 And 每个命令声明结构化输入与结果
 And 查看 schema 不要求 API Key
 
-**场景 1.3：MCP 只列出三个等价的只读工具**
+**场景 1.3：MCP 只列出与 CLI 读取等价的只读工具**
 Given Codex 或 Claude Code 已启用 wbot Plugin
 When MCP client 查询可用工具
-Then server 返回 `list_conversations`
-And server 返回 `read_message_history`
-And server 返回 `read_message_updates`
-And 三个工具都声明为只读
+Then server 返回 `list_accounts`、`list_conversations`、`read_message_history`、`read_message_updates` 与 `get_message`
+And 五个工具都声明为只读
 
 **场景 1.4：MCP 保持只读，CLI 显式提供发送能力**
 Given Platform 内部已经具备发送相关能力
@@ -114,7 +112,7 @@ And 错误不把文件内容输出给 Agent
 Given 用户使用公开发布的 wbot 工具
 And 用户没有提供 endpoint 覆盖
 When Agent 发起读取
-Then 工具连接预设的 wbot 生产服务
+Then 工具连接预设的 `https://wbot-api-test.celados.com`（提供 `/platform/v2`、签发 API Key 的服务）
 And 开发或自托管环境可以用 `WBOT_PLATFORM_URL` 显式覆盖
 
 **场景 2.8：认证失败不会泄漏 API Key**
@@ -139,20 +137,20 @@ Then stdout 不包含伪造的成功结果
 And stderr 包含稳定错误码与可操作消息
 And 进程以非零状态退出
 
-**场景 3.3：Agent 分页列出获授权会话**
+**场景 3.3：Agent 一次列出全部获授权会话**
 Given Tenant 拥有多个群聊或 DM 的有效读取授权
-When Agent 执行 `wbot conversations list`
-Then Agent 得到不超过请求上限的会话
-And 每个会话包含稳定标识、类型、可用标题与最近消息摘要
+When Agent 执行 `wbot conversations.list`（不接受输入）
+Then Agent 一次得到全部可读会话，按最近活动时间倒序，不分页
+And 每个会话包含稳定标识、所属账号、类型、可用标题、头像与最近一条完整消息
 And 每个会话明确返回当前 Tenant 的 read 与可选 send 能力
-And 每个会话返回 unknown、current、delayed 或 unavailable 的采集新鲜度
-And 结果包含下一游标与是否仍有更多会话
+And 传入 cursor 或 limit 等输入时 CLI 在请求前失败
 
-**场景 3.4：Agent 显式带回会话游标读取下一页**
-Given Agent 持有上一页会话列表返回的游标
-When Agent 在新调用中显式提供该游标
-Then Agent 得到游标之后的会话页
-And 结果不重复上一页已经返回的会话
+**场景 3.4：Agent 从账号读取采集新鲜度**
+Given Tenant 的可读会话属于一个或多个账号
+When Agent 执行 `wbot accounts.list`
+Then 每个账号返回 channel、适配器能力与可选的自身身份
+And 每个账号返回 unknown、current、delayed 或 unavailable 的采集新鲜度
+And 未知的新增适配器能力原样保留
 
 ## 功能 4：Agent 向过去读取一个会话的历史
 
@@ -178,18 +176,18 @@ And 不猜测 Agent 想从哪个位置继续
 
 ## 功能 5：Agent 从显式位置读取新增消息
 
-**场景 5.1：首次更新读取建立显式继续位置**
+**场景 5.1：首次更新读取只建立尾部游标**
 Given Tenant 拥有目标会话的有效读取授权
 When Agent 不带更新游标读取该会话
-Then Agent 得到一个有界的当前消息页
-And 结果包含后续读取新增消息所需的更新游标
-And 结果即使没有消息也包含采集新鲜度
+Then Agent 得到空的变更列表与位于当前尾部的更新游标
+And 需要此前的积压消息时，Agent 使用历史读取
 
-**场景 5.2：带回更新游标后只返回后续入库消息**
+**场景 5.2：带回更新游标后只返回后续变更**
 Given Agent 持有先前返回的更新游标
-And Platform 后来为同一会话入库更多消息
+And Platform 后来为同一会话记录了新消息、撤回或附件就绪
 When Agent 显式带回该游标读取更新
-Then Agent 只得到游标之后入库的消息
+Then Agent 按 sequence 顺序得到游标之后的变更
+And 每条变更包含 kind、发生时间与该消息的当前投影
 And 结果返回下一次继续使用的更新游标
 
 **场景 5.3：延迟到达的消息不会因发生时间较早而漏读**
@@ -202,7 +200,7 @@ And 增量位置由 Platform 入库顺序决定
 **场景 5.4：没有带回游标就不会恢复上次进度**
 Given Agent 已完成一次更新读取
 When 新调用没有提供先前返回的更新游标
-Then Agent 得到新的有界当前页
+Then Agent 得到新的尾部游标且没有变更
 And Platform、CLI 与 MCP 都不恢复或猜测上次位置
 
 **场景 5.5：重复使用旧游标可以安全重读**
@@ -220,11 +218,22 @@ And 不返回任何消息内容
 
 **场景 5.7：空更新页区分安静会话与采集异常**
 Given Agent 使用更新游标读取一个暂时没有新增消息的会话
-When Platform 返回空消息页
-Then 结果仍包含采集状态和可证明时的最近成功检查时间
+When Platform 返回空变更页
+Then Agent 通过 `accounts.list` 读取该会话所属账号的采集状态和可证明时的最近成功检查时间
 And Agent 可以区分 current、delayed、unavailable 与 unknown
 And 结果不根据最后消息时间推断采集健康
 And 结果不暴露设备、checkpoint、watermark 或 Operator 诊断
+
+**场景 5.8：重读单条消息刷新附件链接**
+Given Agent 收到 `message.attachment_ready` 变更，或附件签名链接已过期
+When Agent 执行 `wbot messages.get` 提供会话与消息标识
+Then Agent 得到该消息的最新投影与重新签名的附件链接
+
+**场景 5.9：撤回是消息状态而非内容类型**
+Given 一条已读取的消息被撤回
+When Agent 再次读到该消息
+Then 消息 `state` 为 `retracted`，`content` 为 null，并带 `retractedAtMs` 与更高的 `revision`
+And Agent 按消息标识与 revision 合并而不是当作新消息
 
 ## 功能 6：Codex 与 Claude Code Plugin 提供等价能力
 
@@ -233,14 +242,14 @@ Given 用户安装并启用 wbot Codex Plugin
 And 本机已有可用凭据
 When Codex 开始使用该 Plugin
 Then Plugin 启动 wbot MCP runtime
-And Agent 可以发现三个只读工具
+And Agent 可以发现五个只读工具
 
 **场景 6.2：Claude Code Plugin 安装后提供相同工具**
 Given 用户从公开 marketplace 安装并启用 wbot Claude Code Plugin
 And 本机已有可用凭据
 When Claude Code 加载该 Plugin
 Then Plugin 启动同一个版本的 wbot MCP runtime
-And Agent 发现与 Codex 相同名称和 schema 的三个只读工具
+And Agent 发现与 Codex 相同名称和 schema 的五个只读工具
 
 **场景 6.3：Plugin 不携带用户凭据**
 Given 用户安装、升级或分享任一 wbot Plugin

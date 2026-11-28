@@ -3,7 +3,8 @@
 Scenario: Manage one incoming-message subscription
 Given a Tenant API Key and a signing secret in an environment variable
 When the caller runs webhooks.configure, list, retry or remove
-Then the CLI sends one authenticated request to the matching Platform endpoint
+Then the CLI sends one authenticated request to the matching `/platform/v1/webhooks/*` endpoint
+(webhooks are not in `/platform/v2` yet)
 And configure reads the secret from WBOT_WEBHOOK_SIGNING_SECRET or signingSecretEnv
 And successful stdout is JSON without the signing secret
 And no webhook management tool is added to the read-only MCP interface
