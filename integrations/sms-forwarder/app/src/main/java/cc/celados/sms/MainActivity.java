@@ -24,7 +24,7 @@ public final class MainActivity extends Activity {
         sender.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, new String[]{"微信（wbot）", "飞书群机器人"}));
         sender.setSelection(config.getString("sender", "wbot").equals("wbot") ? 0 : 1); layout.addView(sender);
         LinearLayout wbotFields = new LinearLayout(this); wbotFields.setOrientation(LinearLayout.VERTICAL);
-        EditText origin = field(wbotFields, "wbot API 地址", config.getString("origin", "https://wbot-api-prod.celados.com"), false);
+        EditText origin = field(wbotFields, "wbot API 地址", config.getString("origin", "https://wbot-api-test.celados.com"), false);
         EditText key = field(wbotFields, "API Key", config.getString("key", ""), true);
         EditText conversation = field(wbotFields, "目标会话 ID", config.getString("conversation", ""), false);
         layout.addView(wbotFields);
