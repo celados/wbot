@@ -1,12 +1,17 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
+export type NotificationReason = 'message' | 'retraction' | 'attachment'
+
 export type Notification = {
-	version: 1
-	type: 'messages.available'
+	version: 2
+	type: 'conversation.updated'
 	eventId: string
 	conversationId: string
+	reasons: Array<NotificationReason>
 	createdAtMs: number
 }
+
+const VALID_REASONS = new Set<string>(['message', 'retraction', 'attachment'])
 
 export function verifyNotification(
 	body: string,
@@ -37,17 +42,37 @@ export function verifyNotification(
 	if (!event || typeof event !== 'object') return null
 	const value = event as Record<string, unknown>
 	if (
-		value.version !== 1 ||
-		value.type !== 'messages.available' ||
+		value.version !== 2 ||
+		value.type !== 'conversation.updated' ||
 		typeof value.eventId !== 'string' ||
 		value.eventId.length < 1 ||
 		value.eventId.length > 256 ||
 		value.eventId !== headers.get('Switchboard-Event-Id') ||
 		typeof value.conversationId !== 'string' ||
 		value.conversationId.length < 1 ||
+		!Array.isArray(value.reasons) ||
+		value.reasons.length < 1 ||
+		value.reasons.length > 3 ||
 		!Number.isSafeInteger(value.createdAtMs) ||
 		(value.createdAtMs as number) < 0
 	)
 		return null
-	return value as Notification
+	const seenReasons = new Set<NotificationReason>()
+	for (const item of value.reasons) {
+		if (
+			typeof item !== 'string' ||
+			!VALID_REASONS.has(item) ||
+			seenReasons.has(item as NotificationReason)
+		)
+			return null
+		seenReasons.add(item as NotificationReason)
+	}
+	return {
+		version: 2,
+		type: 'conversation.updated',
+		eventId: value.eventId,
+		conversationId: value.conversationId,
+		reasons: [...seenReasons],
+		createdAtMs: value.createdAtMs as number,
+	}
 }

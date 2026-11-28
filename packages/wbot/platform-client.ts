@@ -18,9 +18,13 @@ import type {
 	OutboundSend,
 	OutboundSendGetInput,
 	PlatformErrorCode,
-	WebhookConfigureInput,
-	WebhookIdentityInput,
-	WebhookResult,
+	WebhookCreateInput,
+	WebhookDeleteInput,
+	WebhookEndpointDetail,
+	WebhookEndpointSummary,
+	WebhookGetInput,
+	WebhookRetryInput,
+	WebhookUpdateInput,
 } from './platform-types'
 
 import {
@@ -31,24 +35,21 @@ import {
 	messagePageSchema,
 	messageResultSchema,
 	outboundSendSchema,
-	webhookListResultSchema,
-	webhookRemoveResultSchema,
-	webhookResultSchema,
+	webhookDeleteResultSchema,
+	webhookEndpointDetailSchema,
+	webhookEndpointListSchema,
+	webhookEndpointSummarySchema,
 } from './platform-schemas'
 
 const v2 = '/platform/v2'
 
 /**
- * The only operations still served by the frozen `/platform/v1` major, because
- * `/platform/v2` does not cover them yet: JPEG image send and webhook management.
- * Everything else uses `/platform/v2`; there is no v1 fallback.
+ * The only operation still served by the frozen `/platform/v1` major, because
+ * `/platform/v2` does not cover non-text sends yet: JPEG image send.
+ * Everything else (including webhooks) uses `/platform/v2`; there is no v1 fallback.
  */
 const platformV1Routes = {
 	imageSend: '/platform/v1/messages/send',
-	webhooksConfigure: '/platform/v1/webhooks/configure',
-	webhooksList: '/platform/v1/webhooks/list',
-	webhooksRemove: '/platform/v1/webhooks/remove',
-	webhooksRetry: '/platform/v1/webhooks/retry',
 } as const
 
 export type PlatformClient = {
@@ -63,10 +64,12 @@ export type PlatformClient = {
 }
 
 export type WebhookClient = {
-	configureWebhook: (input: WebhookConfigureInput) => Promise<WebhookResult>
-	listWebhooks: () => Promise<{ items: WebhookResult[] }>
-	removeWebhook: (input: WebhookIdentityInput) => Promise<{ removed: boolean }>
-	retryWebhook: (input: WebhookIdentityInput) => Promise<WebhookResult>
+	createWebhook: (input: WebhookCreateInput) => Promise<WebhookEndpointSummary>
+	listWebhooks: () => Promise<ItemList<WebhookEndpointSummary>>
+	getWebhook: (input: WebhookGetInput) => Promise<WebhookEndpointDetail>
+	updateWebhook: (input: WebhookUpdateInput) => Promise<WebhookEndpointSummary>
+	retryWebhook: (input: WebhookRetryInput) => Promise<WebhookEndpointDetail>
+	deleteWebhook: (input: WebhookDeleteInput) => Promise<{ deleted: boolean }>
 }
 export type WbotClient = PlatformClient & WebhookClient
 
@@ -134,7 +137,7 @@ export const createPlatformClient = (
 		((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
 	let reportedDeprecation = false
 	type PlatformRequest = {
-		method: 'GET' | 'POST'
+		method: 'GET' | 'POST' | 'PATCH' | 'DELETE'
 		path: string
 		/** Path template used in diagnostics when `path` embeds resource IDs. */
 		route?: string
@@ -291,29 +294,68 @@ export const createPlatformClient = (
 				},
 				outboundSendSchema,
 			),
-		configureWebhook: (input) =>
+		createWebhook: (input) =>
 			request(
 				{
 					method: 'POST',
-					path: platformV1Routes.webhooksConfigure,
-					body: input,
+					path: `${v2}/webhooks`,
+					body: {
+						url: input.url,
+						signingSecret: input.signingSecret,
+						...(input.conversationIds === undefined
+							? {}
+							: { conversationIds: input.conversationIds }),
+					},
 				},
-				webhookResultSchema,
+				webhookEndpointSummarySchema,
 			),
 		listWebhooks: () =>
 			request(
-				{ method: 'POST', path: platformV1Routes.webhooksList, body: {} },
-				webhookListResultSchema,
+				{ method: 'GET', path: `${v2}/webhooks` },
+				webhookEndpointListSchema,
 			),
-		removeWebhook: (input) =>
+		getWebhook: (input) =>
 			request(
-				{ method: 'POST', path: platformV1Routes.webhooksRemove, body: input },
-				webhookRemoveResultSchema,
+				{
+					method: 'GET',
+					path: `${v2}/webhooks/${encodeURIComponent(input.webhookId)}`,
+					route: `${v2}/webhooks/{id}`,
+				},
+				webhookEndpointDetailSchema,
 			),
+		updateWebhook: (input) => {
+			const { webhookId, ...patch } = input
+			return request(
+				{
+					method: 'PATCH',
+					path: `${v2}/webhooks/${encodeURIComponent(webhookId)}`,
+					route: `${v2}/webhooks/{id}`,
+					body: patch,
+				},
+				webhookEndpointSummarySchema,
+			)
+		},
 		retryWebhook: (input) =>
 			request(
-				{ method: 'POST', path: platformV1Routes.webhooksRetry, body: input },
-				webhookResultSchema,
+				{
+					method: 'POST',
+					path: `${v2}/webhooks/${encodeURIComponent(input.webhookId)}/retry`,
+					route: `${v2}/webhooks/{id}/retry`,
+					body:
+						input.conversationId === undefined
+							? {}
+							: { conversationId: input.conversationId },
+				},
+				webhookEndpointDetailSchema,
+			),
+		deleteWebhook: (input) =>
+			request(
+				{
+					method: 'DELETE',
+					path: `${v2}/webhooks/${encodeURIComponent(input.webhookId)}`,
+					route: `${v2}/webhooks/{id}`,
+				},
+				webhookDeleteResultSchema,
 			),
 	}
 }

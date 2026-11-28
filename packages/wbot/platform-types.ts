@@ -1,5 +1,5 @@
 // Public result types for the Platform API v2 contract (docs/platform-v2.md).
-// JPEG image sends and webhooks still use /platform/v1; see `platformV1Routes`.
+// Only JPEG image sends still use /platform/v1; see `platformV1Routes`.
 
 export type Identity = {
 	identityId: string
@@ -226,17 +226,71 @@ export type PlatformErrorCode =
 	| 'rate_limited'
 	| 'internal_error'
 
-export type WebhookConfigureInput = {
-	conversationId: string
-	url: string
-	signingSecret: string
+export type WebhookEndpointStatus = 'active' | 'disabled'
+
+export type WebhookHealthStatus = 'idle' | 'healthy' | 'degraded' | 'failing'
+
+export type WebhookDeliveryStatus =
+	| 'idle'
+	| 'pending'
+	| 'sending'
+	| 'failed'
+	| 'cancelled'
+
+export type WebhookDeliverySummary = {
+	health: WebhookHealthStatus
+	pendingCount: number
+	failedCount: number
+	lastDeliveredAtMs: number | null
+	lastError: string | null
 }
-export type WebhookIdentityInput = { conversationId: string }
-export type WebhookResult = {
-	conversationId: string
+
+export type WebhookEndpointSummary = {
+	id: string
 	url: string
-	deliveryStatus: 'idle' | 'pending' | 'sending' | 'failed' | 'cancelled'
+	conversationIds: Array<string> | null
+	status: WebhookEndpointStatus
+	createdAtMs: number
+	updatedAtMs: number
+	summary: WebhookDeliverySummary
+}
+
+export type WebhookDeliveryState = {
+	conversationId: string
+	status: WebhookDeliveryStatus
 	attempts: number
 	lastError: string | null
 	lastDeliveredAtMs: number | null
+	nextAttemptAtMs: number | null
+}
+
+export type WebhookEndpointDetail = WebhookEndpointSummary & {
+	deliveries: Array<WebhookDeliveryState>
+}
+
+export type WebhookCreateInput = {
+	url: string
+	signingSecret: string
+	conversationIds?: Array<string> | null
+}
+
+export type WebhookGetInput = {
+	webhookId: string
+}
+
+export type WebhookUpdateInput = {
+	webhookId: string
+	url?: string
+	signingSecret?: string
+	conversationIds?: Array<string> | null
+	status?: WebhookEndpointStatus
+}
+
+export type WebhookRetryInput = {
+	webhookId: string
+	conversationId?: string
+}
+
+export type WebhookDeleteInput = {
+	webhookId: string
 }
